@@ -3,8 +3,8 @@ import Config
 # Configure your database
 config :social_scribe, SocialScribe.Repo,
   username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
+  password: "",
+  hostname: "127.0.0.1",
   database: "social_scribe_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
