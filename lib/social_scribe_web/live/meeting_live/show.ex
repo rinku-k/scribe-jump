@@ -39,6 +39,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         |> assign(:automation_results, automation_results)
         |> assign(:user_has_automations, user_has_automations)
         |> assign(:hubspot_credential, hubspot_credential)
+        |> assign(:show_chat, false)
         |> assign(
           :follow_up_email_form,
           to_form(%{
@@ -66,6 +67,11 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   @impl true
   def handle_params(_params, _uri, socket) do
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("toggle_chat", _params, socket) do
+    {:noreply, update(socket, :show_chat, &(!&1))}
   end
 
   @impl true
