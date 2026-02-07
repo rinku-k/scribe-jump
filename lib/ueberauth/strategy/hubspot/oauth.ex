@@ -26,12 +26,15 @@ defmodule Ueberauth.Strategy.Hubspot.OAuth do
   These options are only useful for usage outside the normal callback phase of Ueberauth.
   """
   def client(opts \\ []) do
-    config = Application.get_env(:ueberauth, __MODULE__, [])
+    IO.inspect(opts, label: "DEBUG: Options passed to client BEFORE merge")
+    config = Application.get_env(:ueberauth, __MODULE__, []) |> resolve_config()
+    IO.inspect(config, label: "DEBUG: HubSpot OAuth Config")
 
     opts =
       @defaults
       |> Keyword.merge(config)
       |> Keyword.merge(opts)
+    IO.inspect(opts, label: "DEBUG: Options passed to client AFTER merge")
 
     json_library = Ueberauth.json_library()
 
@@ -43,6 +46,7 @@ defmodule Ueberauth.Strategy.Hubspot.OAuth do
   Provides the authorize url for the request phase of Ueberauth.
   """
   def authorize_url!(params \\ [], opts \\ []) do
+    IO.inspect(params, label: "DEBUG: Params passed to authorize_url!")
     opts
     |> client()
     |> OAuth2.Client.authorize_url!(params)
@@ -52,7 +56,7 @@ defmodule Ueberauth.Strategy.Hubspot.OAuth do
   Fetches an access token from the HubSpot token endpoint.
   """
   def get_access_token(params \\ [], opts \\ []) do
-    config = Application.get_env(:ueberauth, __MODULE__, [])
+    config = Application.get_env(:ueberauth, __MODULE__, []) |> resolve_config()
 
     # HubSpot requires client_id and client_secret in the body
     params =
@@ -94,6 +98,14 @@ defmodule Ueberauth.Strategy.Hubspot.OAuth do
       {:error, reason} ->
         {:error, "HTTP error: #{inspect(reason)}"}
     end
+  end
+
+  defp resolve_config(config) do
+    Enum.map(config, fn
+      {k, {System, :get_env, [env_var]}} -> {k, System.get_env(env_var)}
+      {k, {System, :get_env, [env_var, default]}} -> {k, System.get_env(env_var, default)}
+      {k, v} -> {k, v}
+    end)
   end
 
   defp http_client do
