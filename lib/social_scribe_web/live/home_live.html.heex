@@ -34,7 +34,7 @@
                 {event.summary}
               </h3>
               <p class="text-sm text-slate-500  mb-2">
-                {Timex.format!(event.start_time, "%m/%d/%Y, %H:%M:%S", :strftime)}
+                {event.start_time |> Timex.Timezone.convert(@timezone) |> Timex.format!("%m/%d/%Y, %H:%M:%S", :strftime)}
               </p>
             </div>
             <div class="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0">

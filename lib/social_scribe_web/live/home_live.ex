@@ -9,6 +9,8 @@ defmodule SocialScribeWeb.HomeLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    timezone = (connected?(socket) && get_connect_params(socket)["timezone"]) || "UTC"
+
     if connected?(socket), do: send(self(), :sync_calendars)
 
     socket =
@@ -16,6 +18,7 @@ defmodule SocialScribeWeb.HomeLive do
       |> assign(:page_title, "Upcoming Meetings")
       |> assign(:events, Calendar.list_upcoming_events(socket.assigns.current_user))
       |> assign(:loading, true)
+      |> assign(:timezone, timezone)
 
     {:ok, socket}
   end
