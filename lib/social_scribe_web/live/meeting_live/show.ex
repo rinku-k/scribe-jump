@@ -10,6 +10,9 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   alias SocialScribe.Accounts
   alias SocialScribe.HubspotApiBehaviour, as: HubspotApi
   alias SocialScribe.HubspotSuggestions
+  alias SocialScribe.SalesforceApiBehaviour, as: SalesforceApi
+  alias SocialScribe.SalesforceSuggestions
+  alias SocialScribe.AIContentGeneratorApi
 
   @impl true
   def mount(%{"id" => meeting_id}, _session, socket) do
@@ -31,6 +34,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
       {:error, socket}
     else
       hubspot_credential = Accounts.get_user_hubspot_credential(socket.assigns.current_user.id)
+      salesforce_credential = Accounts.get_user_salesforce_credential(socket.assigns.current_user.id)
 
       socket =
         socket
@@ -39,6 +43,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         |> assign(:automation_results, automation_results)
         |> assign(:user_has_automations, user_has_automations)
         |> assign(:hubspot_credential, hubspot_credential)
+        |> assign(:salesforce_credential, salesforce_credential)
         |> assign(:show_chat, false)
         |> assign(
           :follow_up_email_form,
@@ -118,9 +123,12 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         )
 
       {:error, reason} ->
+        {message, retry_after_seconds} = hubspot_suggestions_error_message(reason)
+
         send_update(SocialScribeWeb.MeetingLive.HubspotModalComponent,
           id: "hubspot-modal",
-          error: "Failed to generate suggestions: #{inspect(reason)}",
+          error: message,
+          retry_after_seconds: retry_after_seconds,
           loading: false
         )
     end
@@ -150,9 +158,239 @@ defmodule SocialScribeWeb.MeetingLive.Show do
     end
   end
 
+  # === Salesforce message handlers ===
+
+  @impl true
+  def handle_info({:salesforce_search, query, credential}, socket) do
+    case SalesforceApi.search_contacts(credential, query) do
+      {:ok, contacts} ->
+        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+          id: "salesforce-modal",
+          contacts: contacts,
+          searching: false
+        )
+
+      {:error, reason} ->
+        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+          id: "salesforce-modal",
+          error: "Failed to search contacts: #{inspect(reason)}",
+          searching: false
+        )
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:generate_salesforce_suggestions, contact, meeting, _credential}, socket) do
+    case SalesforceSuggestions.generate_suggestions_from_meeting(meeting) do
+      {:ok, suggestions} ->
+        merged = SalesforceSuggestions.merge_with_contact(suggestions, normalize_contact(contact))
+
+        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+          id: "salesforce-modal",
+          step: :suggestions,
+          suggestions: merged,
+          loading: false
+        )
+
+      {:error, reason} ->
+        {message, retry_after_seconds} = salesforce_suggestions_error_message(reason)
+
+        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+          id: "salesforce-modal",
+          error: message,
+          retry_after_seconds: retry_after_seconds,
+          loading: false
+        )
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:apply_salesforce_updates, updates, contact, credential}, socket) do
+    case SalesforceApi.update_contact(credential, contact.id, updates) do
+      {:ok, _updated_contact} ->
+        socket =
+          socket
+          |> put_flash(
+            :info,
+            "Successfully updated #{map_size(updates)} field(s) in Salesforce"
+          )
+          |> push_patch(to: ~p"/dashboard/meetings/#{socket.assigns.meeting}")
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+          id: "salesforce-modal",
+          error: "Failed to update contact: #{inspect(reason)}",
+          loading: false
+        )
+
+        {:noreply, socket}
+    end
+  end
+
+  # === Chat message handlers ===
+
+  @impl true
+  def handle_info({:chat_contact_search, query, component_id}, socket) do
+    results = search_contacts_for_chat(socket, query)
+
+    send_update(SocialScribeWeb.Chat.ChatComponent,
+      id: component_id,
+      contact_results: results,
+      contact_search_loading: false,
+      show_contact_dropdown: true
+    )
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:chat_question, question, tagged_contacts, component_id}, socket) do
+    meeting = socket.assigns.meeting
+
+    # Build contact data context from tagged contacts
+    contact_data =
+      tagged_contacts
+      |> Enum.flat_map(fn tc ->
+        case tc.provider do
+          "hubspot" ->
+            case socket.assigns[:hubspot_credential] do
+              nil -> []
+              cred ->
+                case HubspotApi.get_contact(cred, tc.id) do
+                  {:ok, contact} -> [{"HubSpot - #{tc.name}", contact}]
+                  _ -> []
+                end
+            end
+
+          "salesforce" ->
+            case socket.assigns[:salesforce_credential] do
+              nil -> []
+              cred ->
+                case SalesforceApi.get_contact(cred, tc.id) do
+                  {:ok, contact} -> [{"Salesforce - #{tc.name}", contact}]
+                  _ -> []
+                end
+            end
+
+          _ ->
+            []
+        end
+      end)
+      |> Enum.into(%{})
+
+    case AIContentGeneratorApi.answer_contact_question(question, contact_data, meeting) do
+      {:ok, answer} ->
+        send_update(SocialScribeWeb.Chat.ChatComponent,
+          id: component_id,
+          messages:
+            get_chat_messages(socket, component_id)
+            |> remove_loading()
+            |> Kernel.++([%{role: :assistant, content: answer, sources: true}]),
+          answering: false
+        )
+
+      {:error, reason} ->
+        send_update(SocialScribeWeb.Chat.ChatComponent,
+          id: component_id,
+          messages:
+            get_chat_messages(socket, component_id)
+            |> remove_loading()
+            |> Kernel.++([
+              %{role: :error, content: "Sorry, I couldn't process your question: #{inspect(reason)}"}
+            ]),
+          answering: false
+        )
+    end
+
+    {:noreply, socket}
+  end
+
+  defp search_contacts_for_chat(socket, query) do
+    hubspot_results =
+      case socket.assigns[:hubspot_credential] do
+        nil ->
+          []
+
+        cred ->
+          case HubspotApi.search_contacts(cred, query) do
+            {:ok, contacts} -> Enum.map(contacts, &Map.put(&1, :provider, "hubspot"))
+            _ -> []
+          end
+      end
+
+    salesforce_results =
+      case socket.assigns[:salesforce_credential] do
+        nil ->
+          []
+
+        cred ->
+          case SalesforceApi.search_contacts(cred, query) do
+            {:ok, contacts} -> Enum.map(contacts, &Map.put(&1, :provider, "salesforce"))
+            _ -> []
+          end
+      end
+
+    (hubspot_results ++ salesforce_results) |> Enum.take(8)
+  end
+
+  defp get_chat_messages(_socket, _component_id) do
+    # We track messages in the component, but since we can't read component state
+    # from the parent, we'll send the updated messages list
+    # The component will be updated via send_update
+    []
+  end
+
+  defp remove_loading(messages) do
+    Enum.reject(messages, fn msg -> msg.role == :loading end)
+  end
+
   defp normalize_contact(contact) do
     # Contact is already formatted with atom keys from HubspotApi.format_contact
     contact
+  end
+
+  defp hubspot_suggestions_error_message({:api_error, 429, error_body}) when is_map(error_body) do
+    retry_after_seconds = parse_gemini_retry_delay_seconds(error_body)
+
+    base =
+      "Gemini API quota/rate limit exceeded while generating suggestions. " <>
+        "Please wait#{if(retry_after_seconds, do: " ~#{retry_after_seconds}s", else: "")} " <>
+        "and try again. If this keeps happening, check billing/quota for your GEMINI_API_KEY."
+
+    {base, retry_after_seconds}
+  end
+
+  defp hubspot_suggestions_error_message({:api_error, status, _error_body}) do
+    {"Gemini API error (HTTP #{status}) while generating suggestions. Please try again.", nil}
+  end
+
+  defp hubspot_suggestions_error_message({:config_error, message}) when is_binary(message) do
+    {message, nil}
+  end
+
+  defp hubspot_suggestions_error_message(reason) do
+    {"Failed to generate suggestions. Please try again. (#{inspect(reason)})", nil}
+  end
+
+  defp parse_gemini_retry_delay_seconds(error_body) when is_map(error_body) do
+    details = get_in(error_body, ["error", "details"])
+
+    with details when is_list(details) <- details,
+         %{"retryDelay" => retry_delay} <-
+           Enum.find(details, fn d -> is_map(d) and d["@type"] == "type.googleapis.com/google.rpc.RetryInfo" end),
+         retry_delay when is_binary(retry_delay) <- retry_delay,
+         [seconds_str] <- Regex.run(~r/(\d+)s/, retry_delay, capture: :all_but_first),
+         {seconds, ""} <- Integer.parse(seconds_str) do
+      seconds
+    else
+      _ -> nil
+    end
   end
 
   defp format_duration(nil), do: "N/A"
@@ -205,5 +443,29 @@ defmodule SocialScribeWeb.MeetingLive.Show do
       </div>
     </div>
     """
+  end
+
+  defp salesforce_suggestions_error_message({:api_error, 429, error_body})
+       when is_map(error_body) do
+    retry_after_seconds = parse_gemini_retry_delay_seconds(error_body)
+
+    base =
+      "Gemini API quota/rate limit exceeded while generating suggestions. " <>
+        "Please wait#{if(retry_after_seconds, do: " ~#{retry_after_seconds}s", else: "")} " <>
+        "and try again."
+
+    {base, retry_after_seconds}
+  end
+
+  defp salesforce_suggestions_error_message({:api_error, status, _error_body}) do
+    {"Gemini API error (HTTP #{status}) while generating suggestions. Please try again.", nil}
+  end
+
+  defp salesforce_suggestions_error_message({:config_error, message}) when is_binary(message) do
+    {message, nil}
+  end
+
+  defp salesforce_suggestions_error_message(reason) do
+    {"Failed to generate suggestions. Please try again. (#{inspect(reason)})", nil}
   end
 end

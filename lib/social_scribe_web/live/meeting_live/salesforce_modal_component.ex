@@ -1,4 +1,10 @@
-defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
+defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
+  @moduledoc """
+  LiveComponent for the Salesforce contact update modal.
+  Allows searching Salesforce contacts, viewing AI-generated suggestions,
+  and selectively updating contact fields.
+  """
+
   use SocialScribeWeb, :live_component
 
   import SocialScribeWeb.ModalComponents
@@ -6,12 +12,14 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
   @impl true
   def render(assigns) do
     assigns = assign(assigns, :patch, ~p"/dashboard/meetings/#{assigns.meeting}")
-    assigns = assign_new(assigns, :modal_id, fn -> "hubspot-modal-wrapper" end)
+    assigns = assign_new(assigns, :modal_id, fn -> "salesforce-modal-wrapper" end)
 
     ~H"""
     <div class="space-y-6">
       <div>
-        <h2 id={"#{@modal_id}-title"} class="text-xl font-medium tracking-tight text-slate-900">Update in HubSpot</h2>
+        <h2 id={"#{@modal_id}-title"} class="text-xl font-medium tracking-tight text-slate-900">
+          Update in Salesforce
+        </h2>
         <p id={"#{@modal_id}-description"} class="mt-2 text-base font-light leading-7 text-slate-500">
           Here are suggested updates to sync with your integrations based on this
           <span class="block">meeting</span>
@@ -19,19 +27,20 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
       </div>
 
       <.contact_select
-          selected_contact={@selected_contact}
-          contacts={@contacts}
-          loading={@searching}
-          open={@dropdown_open}
-          query={@query}
-          target={@myself}
-          error={@error}
-        />
+        selected_contact={@selected_contact}
+        contacts={@contacts}
+        loading={@searching}
+        open={@dropdown_open}
+        query={@query}
+        target={@myself}
+        error={@error}
+        id="salesforce-contact-select"
+      />
 
       <div :if={@error && @selected_contact} class="flex items-center gap-3">
         <button
           type="button"
-          phx-click="retry_generate_suggestions"
+          phx-click="sf_retry_generate_suggestions"
           phx-target={@myself}
           class="px-3 py-2 rounded-md bg-slate-100 text-slate-800 text-sm font-medium hover:bg-slate-200"
         >
@@ -43,7 +52,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
       </div>
 
       <%= if @selected_contact do %>
-        <.suggestions_section
+        <.sf_suggestions_section
           suggestions={@suggestions}
           loading={@loading}
           myself={@myself}
@@ -59,7 +68,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
   attr :myself, :any, required: true
   attr :patch, :string, required: true
 
-  defp suggestions_section(assigns) do
+  defp sf_suggestions_section(assigns) do
     assigns = assign(assigns, :selected_count, Enum.count(assigns.suggestions, & &1.apply))
 
     ~H"""
@@ -76,14 +85,14 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
             submessage="The AI didn't detect any new contact information in the transcript."
           />
         <% else %>
-          <form phx-submit="apply_updates" phx-change="toggle_suggestion" phx-target={@myself}>
+          <form phx-submit="sf_apply_updates" phx-change="sf_toggle_suggestion" phx-target={@myself}>
             <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
               <.suggestion_card :for={suggestion <- @suggestions} suggestion={suggestion} />
             </div>
 
             <.modal_footer
               cancel_patch={@patch}
-              submit_text="Update HubSpot"
+              submit_text="Update Salesforce"
               submit_class="bg-hubspot-button hover:bg-hubspot-button-hover"
               disabled={@selected_count == 0}
               loading={@loading}
@@ -117,7 +126,8 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
     {:ok, socket}
   end
 
-  defp maybe_select_all_suggestions(socket, %{suggestions: suggestions}) when is_list(suggestions) do
+  defp maybe_select_all_suggestions(socket, %{suggestions: suggestions})
+       when is_list(suggestions) do
     assign(socket, suggestions: Enum.map(suggestions, &Map.put(&1, :apply, true)))
   end
 
@@ -129,7 +139,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
 
     if String.length(query) >= 2 do
       socket = assign(socket, searching: true, error: nil, query: query, dropdown_open: true)
-      send(self(), {:hubspot_search, query, socket.assigns.credential})
+      send(self(), {:salesforce_search, query, socket.assigns.credential})
       {:noreply, socket}
     else
       {:noreply, assign(socket, query: query, contacts: [], dropdown_open: query != "")}
@@ -151,10 +161,12 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
     if socket.assigns.dropdown_open do
       {:noreply, assign(socket, dropdown_open: false)}
     else
-      # When opening dropdown with selected contact, search for similar contacts
       socket = assign(socket, dropdown_open: true, searching: true)
-      query = "#{socket.assigns.selected_contact.firstname} #{socket.assigns.selected_contact.lastname}"
-      send(self(), {:hubspot_search, query, socket.assigns.credential})
+
+      query =
+        "#{socket.assigns.selected_contact.firstname} #{socket.assigns.selected_contact.lastname}"
+
+      send(self(), {:salesforce_search, query, socket.assigns.credential})
       {:noreply, socket}
     end
   end
@@ -164,16 +176,23 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
     contact = Enum.find(socket.assigns.contacts, &(&1.id == contact_id))
 
     if contact do
-      socket = assign(socket,
-        loading: true,
-        selected_contact: contact,
-        error: nil,
-        retry_after_seconds: nil,
-        dropdown_open: false,
-        query: "",
-        suggestions: []
+      socket =
+        assign(socket,
+          loading: true,
+          selected_contact: contact,
+          error: nil,
+          retry_after_seconds: nil,
+          dropdown_open: false,
+          query: "",
+          suggestions: []
+        )
+
+      send(
+        self(),
+        {:generate_salesforce_suggestions, contact, socket.assigns.meeting,
+         socket.assigns.credential}
       )
-      send(self(), {:generate_suggestions, contact, socket.assigns.meeting, socket.assigns.credential})
+
       {:noreply, socket}
     else
       {:noreply, assign(socket, error: "Contact not found")}
@@ -181,7 +200,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
   end
 
   @impl true
-  def handle_event("retry_generate_suggestions", _params, socket) do
+  def handle_event("sf_retry_generate_suggestions", _params, socket) do
     if socket.assigns.selected_contact do
       socket =
         assign(socket,
@@ -193,8 +212,8 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
 
       send(
         self(),
-        {:generate_suggestions, socket.assigns.selected_contact, socket.assigns.meeting,
-         socket.assigns.credential}
+        {:generate_salesforce_suggestions, socket.assigns.selected_contact,
+         socket.assigns.meeting, socket.assigns.credential}
       )
 
       {:noreply, socket}
@@ -221,7 +240,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
   end
 
   @impl true
-  def handle_event("toggle_suggestion", params, socket) do
+  def handle_event("sf_toggle_suggestion", params, socket) do
     applied_fields = Map.get(params, "apply", %{})
     values = Map.get(params, "values", %{})
     checked_fields = Map.keys(applied_fields)
@@ -243,7 +262,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
   end
 
   @impl true
-  def handle_event("apply_updates", %{"apply" => selected, "values" => values}, socket) do
+  def handle_event("sf_apply_updates", %{"apply" => selected, "values" => values}, socket) do
     socket = assign(socket, loading: true, error: nil)
 
     updates =
@@ -253,12 +272,17 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
         Map.put(acc, field, Map.get(values, field, ""))
       end)
 
-    send(self(), {:apply_hubspot_updates, updates, socket.assigns.selected_contact, socket.assigns.credential})
+    send(
+      self(),
+      {:apply_salesforce_updates, updates, socket.assigns.selected_contact,
+       socket.assigns.credential}
+    )
+
     {:noreply, socket}
   end
 
   @impl true
-  def handle_event("apply_updates", _params, socket) do
+  def handle_event("sf_apply_updates", _params, socket) do
     {:noreply, assign(socket, error: "Please select at least one field to update")}
   end
 end
