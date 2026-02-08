@@ -285,10 +285,10 @@ defmodule SocialScribeWeb.MeetingLive.Show do
       |> Enum.into(%{})
 
     case AIContentGeneratorApi.answer_contact_question(question, contact_data, meeting) do
-      {:ok, answer} ->
+      {:ok, %{answer: answer, sources: sources}} ->
         send_update(SocialScribeWeb.Chat.ChatComponent,
           id: component_id,
-          ai_response: %{role: :assistant, content: answer, sources: true},
+          ai_response: %{role: :assistant, content: answer, sources: sources},
           answering: false
         )
 

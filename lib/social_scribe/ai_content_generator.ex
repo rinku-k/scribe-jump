@@ -162,37 +162,158 @@ defmodule SocialScribe.AIContentGenerator do
         {:error, reason}
 
       {:ok, meeting_prompt} ->
+        # Determine which sources are available
+        has_crm_data = map_size(contact_data) > 0
+        crm_sources = extract_crm_sources(contact_data)
+
         contact_info =
-          contact_data
-          |> Enum.map(fn {source, contact} ->
-            details =
-              contact
-              |> Enum.map(fn {field, value} -> "  - #{field}: #{value || "N/A"}" end)
-              |> Enum.join("\n")
+          if has_crm_data do
+            contact_data
+            |> Enum.map(fn {source, contact} ->
+              details =
+                contact
+                |> Enum.map(fn {field, value} -> "  - #{field}: #{value || "N/A"}" end)
+                |> Enum.join("\n")
 
-            "Source: #{source}\n#{details}"
-          end)
-          |> Enum.join("\n\n")
+              "Source: #{source}\n#{details}"
+            end)
+            |> Enum.join("\n\n")
+          else
+            ""
+          end
 
-        prompt = """
-        You are an AI assistant helping a financial advisor with CRM contact information.
+        prompt = build_context_aware_prompt(question, meeting_prompt, contact_info, has_crm_data, crm_sources)
 
-        The advisor is asking a question about a contact. Use the meeting transcript and contact data to provide a helpful, concise answer.
+        case call_gemini(prompt) do
+          {:ok, response} ->
+            parse_structured_chat_response(response, has_crm_data, crm_sources)
 
-        Contact Information:
-        #{contact_info}
-
-        Meeting Transcript:
-        #{meeting_prompt}
-
-        Question: #{question}
-
-        Provide a clear, concise answer. If referencing specific parts of the transcript, mention the approximate timestamp. If you don't have enough information to answer, say so clearly.
-        """
-
-        call_gemini(prompt)
+          {:error, reason} ->
+            {:error, reason}
+        end
     end
   end
+
+  # Build a context-aware prompt based on available data sources
+  defp build_context_aware_prompt(question, meeting_prompt, contact_info, has_crm_data, crm_sources) do
+    sources_list = if has_crm_data, do: ["Meeting"] ++ crm_sources, else: ["Meeting"]
+    valid_sources_hint = Enum.join(sources_list, ", ")
+
+    if has_crm_data do
+      """
+      You are an AI assistant helping a financial advisor with meeting and CRM contact information.
+
+      The advisor is asking a question. You have access to both the meeting transcript AND CRM contact data.
+      Use the appropriate data source(s) to provide a helpful, concise answer.
+
+      IMPORTANT INSTRUCTIONS FOR SOURCES:
+      - If the answer comes ONLY from the Meeting transcript, set sources to ["Meeting"]
+      - If the answer comes ONLY from CRM data (#{valid_sources_hint}), set sources to the specific CRM source(s) used
+      - If the answer combines information from both the meeting AND CRM data, include all relevant sources
+      - Be accurate about which sources you actually used to form your answer
+      - Do NOT include a source if you didn't use information from it
+
+      CRM Contact Information:
+      #{contact_info}
+
+      Meeting Transcript:
+      #{meeting_prompt}
+
+      Question: #{question}
+
+      Respond in the following JSON format ONLY (no additional text):
+      {
+        "answer": "Your clear, concise answer here. If referencing specific parts of the transcript, mention the approximate timestamp.",
+        "sources": ["Meeting"] or ["Salesforce"] or ["HubSpot"] or ["Meeting", "Salesforce"] etc.
+      }
+      """
+    else
+      """
+      You are an AI assistant helping a financial advisor with meeting information.
+
+      The advisor is asking a question about a meeting. Use ONLY the meeting transcript to answer.
+      No CRM or external contact data is available for this question.
+
+      IMPORTANT: Since only the meeting transcript is available, your answer must come from the meeting only.
+
+      Meeting Transcript:
+      #{meeting_prompt}
+
+      Question: #{question}
+
+      Respond in the following JSON format ONLY (no additional text):
+      {
+        "answer": "Your clear, concise answer here. If referencing specific parts of the transcript, mention the approximate timestamp. If you don't have enough information to answer, say so clearly.",
+        "sources": ["Meeting"]
+      }
+      """
+    end
+  end
+
+  # Extract CRM source names from contact_data keys
+  defp extract_crm_sources(contact_data) do
+    contact_data
+    |> Map.keys()
+    |> Enum.map(fn key ->
+      cond do
+        String.contains?(key, "HubSpot") -> "HubSpot"
+        String.contains?(key, "Salesforce") -> "Salesforce"
+        true -> key
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  # Parse the structured JSON response from Gemini
+  defp parse_structured_chat_response(response, has_crm_data, available_crm_sources) do
+    cleaned =
+      response
+      |> String.trim()
+      |> String.replace(~r/^```json\n?/, "")
+      |> String.replace(~r/\n?```$/, "")
+      |> String.trim()
+
+    case Jason.decode(cleaned) do
+      {:ok, %{"answer" => answer, "sources" => sources}} when is_binary(answer) and is_list(sources) ->
+        # Convert string sources to atoms and validate
+        parsed_sources =
+          sources
+          |> Enum.map(&normalize_source_name/1)
+          |> Enum.filter(&(&1 != nil))
+          |> Enum.uniq()
+
+        # Ensure we have at least Meeting source
+        final_sources = if Enum.empty?(parsed_sources), do: [:meeting], else: parsed_sources
+
+        {:ok, %{answer: answer, sources: final_sources}}
+
+      {:ok, %{"answer" => answer}} when is_binary(answer) ->
+        # Fallback if sources not provided
+        default_sources = if has_crm_data, do: [:meeting | Enum.map(available_crm_sources, &String.downcase/1) |> Enum.map(&String.to_atom/1)], else: [:meeting]
+        {:ok, %{answer: answer, sources: default_sources}}
+
+      {:error, _} ->
+        # If JSON parsing fails, treat entire response as answer with meeting source
+        {:ok, %{answer: response, sources: [:meeting]}}
+
+      _ ->
+        # Unexpected format
+        {:ok, %{answer: response, sources: [:meeting]}}
+    end
+  end
+
+  # Normalize source name strings to atoms
+  defp normalize_source_name(source) when is_binary(source) do
+    case String.downcase(String.trim(source)) do
+      "meeting" -> :meeting
+      "hubspot" -> :hubspot
+      "salesforce" -> :salesforce
+      _ -> nil
+    end
+  end
+
+  defp normalize_source_name(_), do: nil
+
 
   defp parse_crm_suggestions(response) do
     cleaned =

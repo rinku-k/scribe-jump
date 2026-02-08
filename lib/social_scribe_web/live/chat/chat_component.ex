@@ -110,11 +110,19 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
                   {paragraph}
                 </p>
               </div>
-              <div :if={message[:sources]} class="flex items-center gap-2 mt-2">
+              <div :if={message[:sources] && is_list(message.sources)} class="flex items-center gap-2 mt-2">
                 <span class="text-xs text-gray-400">Sources</span>
-                <span class="bg-black text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px]">
-                  M
-                </span>
+                <div class="flex -space-x-1">
+                  <span :if={:meeting in message.sources} class="bg-black text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-30 border border-white">
+                    M
+                  </span>
+                  <span :if={:hubspot in message.sources} class="bg-orange-500 text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-20 border border-white">
+                    H
+                  </span>
+                  <span :if={:salesforce in message.sources} class="bg-blue-600 text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-10 border border-white">
+                    S
+                  </span>
+                </div>
               </div>
             </div>
 

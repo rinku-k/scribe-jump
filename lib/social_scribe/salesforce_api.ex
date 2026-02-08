@@ -23,7 +23,6 @@ defmodule SocialScribe.SalesforceApi do
     "Phone",
     "MobilePhone",
     "Title",
-    "Department",
     "MailingStreet",
     "MailingCity",
     "MailingState",
