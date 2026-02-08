@@ -7,12 +7,14 @@ defmodule SocialScribeWeb.MeetingLive.Index do
 
   @impl true
   def mount(_params, _session, socket) do
+    timezone = (connected?(socket) && get_connect_params(socket)["timezone"]) || "UTC"
     meetings = Meetings.list_user_meetings(socket.assigns.current_user)
 
     socket =
       socket
       |> assign(:page_title, "Past Meetings")
       |> assign(:meetings, meetings)
+      |> assign(:timezone, timezone)
 
     {:ok, socket}
   end

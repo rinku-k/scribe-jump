@@ -16,6 +16,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
 
   @impl true
   def mount(%{"id" => meeting_id}, _session, socket) do
+    timezone = (connected?(socket) && get_connect_params(socket)["timezone"]) || "UTC"
     meeting = Meetings.get_meeting_with_details(meeting_id)
 
     user_has_automations =
@@ -45,6 +46,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         |> assign(:hubspot_credential, hubspot_credential)
         |> assign(:salesforce_credential, salesforce_credential)
         |> assign(:show_chat, false)
+        |> assign(:timezone, timezone)
         |> assign(
           :follow_up_email_form,
           to_form(%{
