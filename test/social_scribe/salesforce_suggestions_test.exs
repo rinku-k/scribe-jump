@@ -1,0 +1,142 @@
+defmodule SocialScribe.SalesforceSuggestionsTest do
+  use SocialScribe.DataCase
+
+  alias SocialScribe.SalesforceSuggestions
+
+  describe "merge_with_contact/2" do
+    test "merges suggestions with contact data and filters unchanged values" do
+      suggestions = [
+        %{
+          field: "phone",
+          label: "Phone",
+          current_value: nil,
+          new_value: "555-1234",
+          context: "Mentioned in call",
+          apply: false,
+          has_change: true
+        },
+        %{
+          field: "company",
+          label: "Company",
+          current_value: nil,
+          new_value: "Acme Corp",
+          context: "Works at Acme",
+          apply: false,
+          has_change: true
+        }
+      ]
+
+      contact = %{
+        id: "123",
+        phone: nil,
+        company: "Acme Corp",
+        email: "test@example.com"
+      }
+
+      result = SalesforceSuggestions.merge_with_contact(suggestions, contact)
+
+      # Only phone should remain since company already matches
+      assert length(result) == 1
+      assert hd(result).field == "phone"
+      assert hd(result).new_value == "555-1234"
+    end
+
+    test "returns empty list when all suggestions match current values" do
+      suggestions = [
+        %{
+          field: "email",
+          label: "Email",
+          current_value: nil,
+          new_value: "test@example.com",
+          context: "Email mentioned",
+          apply: false,
+          has_change: true
+        }
+      ]
+
+      contact = %{
+        id: "123",
+        email: "test@example.com"
+      }
+
+      result = SalesforceSuggestions.merge_with_contact(suggestions, contact)
+
+      assert result == []
+    end
+
+    test "handles empty suggestions list" do
+      contact = %{id: "123", email: "test@example.com"}
+
+      result = SalesforceSuggestions.merge_with_contact([], contact)
+
+      assert result == []
+    end
+
+    test "handles contact with nil fields" do
+      suggestions = [
+        %{
+          field: "company",
+          label: "Company",
+          current_value: nil,
+          new_value: "Acme Corp",
+          context: "Mentioned company",
+          apply: false,
+          has_change: true
+        }
+      ]
+
+      contact = %{company: nil}
+
+      result = SalesforceSuggestions.merge_with_contact(suggestions, contact)
+      assert length(result) == 1
+      assert hd(result).field == "company"
+      assert hd(result).current_value == nil
+      assert hd(result).new_value == "Acme Corp"
+      assert hd(result).apply == true
+    end
+
+    test "preserves new_value and updates apply to true" do
+      suggestions = [
+        %{
+          field: "phone",
+          label: "Phone",
+          current_value: "old-value",
+          new_value: "555-9999",
+          context: "Shared phone",
+          apply: false,
+          has_change: true
+        }
+      ]
+
+      contact = %{phone: "different-number"}
+
+      result = SalesforceSuggestions.merge_with_contact(suggestions, contact)
+      assert length(result) == 1
+      assert hd(result).apply == true
+      assert hd(result).current_value == "different-number"
+      assert hd(result).new_value == "555-9999"
+    end
+  end
+
+  describe "field_labels" do
+    test "common fields have human-readable labels" do
+      suggestions = [
+        %{
+          field: "phone",
+          label: "Phone",
+          current_value: nil,
+          new_value: "555-1234",
+          context: "test",
+          apply: false,
+          has_change: true
+        }
+      ]
+
+      contact = %{id: "123", phone: nil}
+
+      result = SalesforceSuggestions.merge_with_contact(suggestions, contact)
+
+      assert hd(result).label == "Phone"
+    end
+  end
+end
