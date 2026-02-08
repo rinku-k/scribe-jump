@@ -1,29 +1,25 @@
-defmodule Ueberauth.Strategy.Hubspot.OAuth do
+defmodule Ueberauth.Strategy.Salesforce.OAuth do
   @moduledoc """
-  OAuth2 for HubSpot.
+  OAuth2 for Salesforce.
 
   Add `client_id` and `client_secret` to your configuration:
 
-      config :ueberauth, Ueberauth.Strategy.Hubspot.OAuth,
-        client_id: System.get_env("HUBSPOT_CLIENT_ID"),
-        client_secret: System.get_env("HUBSPOT_CLIENT_SECRET")
+      config :ueberauth, Ueberauth.Strategy.Salesforce.OAuth,
+        client_id: System.get_env("SALESFORCE_CLIENT_ID"),
+        client_secret: System.get_env("SALESFORCE_CLIENT_SECRET")
   """
 
   use OAuth2.Strategy
 
   @defaults [
     strategy: __MODULE__,
-    site: "https://api.hubapi.com",
-    authorize_url: "https://app.hubspot.com/oauth/authorize",
-    token_url: "https://api.hubapi.com/oauth/v1/token"
+    site: "https://login.salesforce.com",
+    authorize_url: "https://login.salesforce.com/services/oauth2/authorize",
+    token_url: "https://login.salesforce.com/services/oauth2/token"
   ]
 
   @doc """
-  Construct a client for requests to HubSpot.
-
-  This will be setup automatically for you in `Ueberauth.Strategy.Hubspot`.
-
-  These options are only useful for usage outside the normal callback phase of Ueberauth.
+  Construct a client for requests to Salesforce.
   """
   def client(opts \\ []) do
     config = Application.get_env(:ueberauth, __MODULE__, []) |> resolve_config()
@@ -49,29 +45,27 @@ defmodule Ueberauth.Strategy.Hubspot.OAuth do
   end
 
   @doc """
-  Fetches an access token from the HubSpot token endpoint.
+  Fetches an access token from the Salesforce token endpoint.
+  Supports PKCE: pass code_verifier in opts when exchanging the authorization code.
   """
   def get_access_token(params \\ [], opts \\ []) do
     config = Application.get_env(:ueberauth, __MODULE__, []) |> resolve_config()
 
-    # HubSpot requires client_id and client_secret in the body
     params =
       params
       |> Keyword.put(:client_id, config[:client_id])
       |> Keyword.put(:client_secret, config[:client_secret])
+      |> maybe_put_code_verifier(opts)
 
     case opts |> client() |> OAuth2.Client.get_token(params) do
       {:ok, %OAuth2.Client{token: %OAuth2.AccessToken{} = token}} ->
         {:ok, token}
 
       {:ok, %OAuth2.Client{token: nil}} ->
-        {:error, {"no_token", "No token returned from HubSpot"}}
+        {:error, {"no_token", "No token returned from Salesforce"}}
 
       {:error, %OAuth2.Response{body: %{"error" => error, "error_description" => description}}} ->
         {:error, {error, description}}
-
-      {:error, %OAuth2.Response{body: %{"message" => message, "status" => status}}} ->
-        {:error, {status, message}}
 
       {:error, %OAuth2.Error{reason: reason}} ->
         {:error, {"oauth2_error", to_string(reason)}}
@@ -79,20 +73,32 @@ defmodule Ueberauth.Strategy.Hubspot.OAuth do
   end
 
   @doc """
-  Fetches token info from HubSpot to get hub_id and user email.
+  Fetches user info from Salesforce using the identity URL.
   """
-  def get_token_info(access_token) do
-    url = "https://api.hubapi.com/oauth/v1/access-tokens/#{access_token}"
+  def get_user_info(access_token, instance_url) do
+    url = "#{instance_url}/services/oauth2/userinfo"
 
-    case Tesla.get(http_client(), url) do
+    headers = [
+      {"Authorization", "Bearer #{access_token}"},
+      {"Accept", "application/json"}
+    ]
+
+    case Tesla.get(http_client(), url, headers: headers) do
       {:ok, %Tesla.Env{status: 200, body: body}} ->
         {:ok, body}
 
       {:ok, %Tesla.Env{status: status, body: body}} ->
-        {:error, "Failed to get token info: #{status} - #{inspect(body)}"}
+        {:error, "Failed to get user info: #{status} - #{inspect(body)}"}
 
       {:error, reason} ->
         {:error, "HTTP error: #{inspect(reason)}"}
+    end
+  end
+
+  defp maybe_put_code_verifier(params, opts) do
+    case Keyword.get(opts, :code_verifier) do
+      nil -> params
+      verifier -> Keyword.put(params, :code_verifier, verifier)
     end
   end
 
