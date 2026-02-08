@@ -164,8 +164,15 @@ defmodule SocialScribe.AIContentGenerator do
       {:ok, meeting_prompt} ->
         contact_info =
           contact_data
-          |> Enum.map(fn {k, v} -> "#{k}: #{v || "N/A"}" end)
-          |> Enum.join("\n")
+          |> Enum.map(fn {source, contact} ->
+            details =
+              contact
+              |> Enum.map(fn {field, value} -> "  - #{field}: #{value || "N/A"}" end)
+              |> Enum.join("\n")
+
+            "Source: #{source}\n#{details}"
+          end)
+          |> Enum.join("\n\n")
 
         prompt = """
         You are an AI assistant helping a financial advisor with CRM contact information.

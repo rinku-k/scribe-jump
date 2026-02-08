@@ -295,6 +295,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
       |> assign_new(:contact_search_loading, fn -> false end)
       |> assign(:has_hubspot, has_hubspot)
       |> assign(:has_salesforce, has_salesforce)
+      |> maybe_append_ai_response(assigns)
 
     {:ok, socket}
   end
@@ -337,7 +338,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
 
     # Check for @mention trigger
     case detect_mention(value) do
-      {:mention, query} when byte_size(query) >= 1 ->
+      {:mention, query} when byte_size(query) >= 2 ->
         socket = assign(socket, show_contact_dropdown: true, contact_search_loading: true)
         send(self(), {:chat_contact_search, query, socket.assigns.id})
         {:noreply, socket}
@@ -427,4 +428,16 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     Regex.replace(~r/@\w*$/, text, "")
     |> String.trim_trailing()
   end
+
+  # Handle ai_response from parent LiveView
+  defp maybe_append_ai_response(socket, %{ai_response: ai_response}) do
+    updated_messages =
+      socket.assigns.messages
+      |> Enum.reject(fn msg -> msg.role == :loading end)
+      |> Kernel.++([ai_response])
+
+    assign(socket, messages: updated_messages)
+  end
+
+  defp maybe_append_ai_response(socket, _assigns), do: socket
 end

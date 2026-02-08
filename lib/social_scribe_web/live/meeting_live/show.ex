@@ -288,22 +288,14 @@ defmodule SocialScribeWeb.MeetingLive.Show do
       {:ok, answer} ->
         send_update(SocialScribeWeb.Chat.ChatComponent,
           id: component_id,
-          messages:
-            get_chat_messages(socket, component_id)
-            |> remove_loading()
-            |> Kernel.++([%{role: :assistant, content: answer, sources: true}]),
+          ai_response: %{role: :assistant, content: answer, sources: true},
           answering: false
         )
 
       {:error, reason} ->
         send_update(SocialScribeWeb.Chat.ChatComponent,
           id: component_id,
-          messages:
-            get_chat_messages(socket, component_id)
-            |> remove_loading()
-            |> Kernel.++([
-              %{role: :error, content: "Sorry, I couldn't process your question: #{inspect(reason)}"}
-            ]),
+          ai_response: %{role: :error, content: "Sorry, I couldn't process your question: #{inspect(reason)}"},
           answering: false
         )
     end
@@ -339,16 +331,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
     (hubspot_results ++ salesforce_results) |> Enum.take(8)
   end
 
-  defp get_chat_messages(_socket, _component_id) do
-    # We track messages in the component, but since we can't read component state
-    # from the parent, we'll send the updated messages list
-    # The component will be updated via send_update
-    []
-  end
 
-  defp remove_loading(messages) do
-    Enum.reject(messages, fn msg -> msg.role == :loading end)
-  end
 
   defp normalize_contact(contact) do
     # Contact is already formatted with atom keys from HubspotApi.format_contact
