@@ -122,34 +122,42 @@ defmodule SocialScribe.Bots do
     user_bot_preference = get_user_bot_preference(user.id) || %UserBotPreference{}
     join_minute_offset = user_bot_preference.join_minute_offset
 
-    with {:ok, %{status: status, body: api_response}} when status in 200..299 <-
-           RecallApi.create_bot(
-             calendar_event.hangout_link,
-             DateTime.add(
-               calendar_event.start_time,
-               -join_minute_offset,
-               :minute
-             )
-           ),
-         %{id: bot_id} <- api_response do
-      status = get_in(api_response, [:status_changes, Access.at(0), :code]) || "ready"
+    # Use meeting_url (supports Google Meet, Zoom, Teams) or fallback to hangout_link
+    meeting_url = calendar_event.meeting_url || calendar_event.hangout_link
 
-      create_recall_bot(%{
-        user_id: user.id,
-        calendar_event_id: calendar_event.id,
-        recall_bot_id: bot_id,
-        meeting_url: calendar_event.hangout_link,
-        status: status
-      })
+    # Ensure we have a meeting URL before creating a bot
+    if is_nil(meeting_url) do
+      {:error, {:validation_error, "No meeting URL found for this event"}}
     else
-      {:ok, %{status: status, body: body}} ->
-        {:error, {:api_error, {status, body}}}
+      with {:ok, %{status: status, body: api_response}} when status in 200..299 <-
+             RecallApi.create_bot(
+               meeting_url,
+               DateTime.add(
+                 calendar_event.start_time,
+                 -join_minute_offset,
+                 :minute
+               )
+             ),
+           %{id: bot_id} <- api_response do
+        status = get_in(api_response, [:status_changes, Access.at(0), :code]) || "ready"
 
-      {:error, reason} ->
-        {:error, {:api_error, reason}}
+        create_recall_bot(%{
+          user_id: user.id,
+          calendar_event_id: calendar_event.id,
+          recall_bot_id: bot_id,
+          meeting_url: meeting_url,
+          status: status
+        })
+      else
+        {:ok, %{status: status, body: body}} ->
+          {:error, {:api_error, {status, body}}}
 
-      _ ->
-        {:error, {:api_error, :invalid_response}}
+        {:error, reason} ->
+          {:error, {:api_error, reason}}
+
+        _ ->
+          {:error, {:api_error, :invalid_response}}
+      end
     end
   end
 
@@ -177,10 +185,13 @@ defmodule SocialScribe.Bots do
     user_bot_preference = get_user_bot_preference(bot.user_id) || %UserBotPreference{}
     join_minute_offset = user_bot_preference.join_minute_offset
 
+    # Use meeting_url (supports Google Meet, Zoom, Teams) or fallback to hangout_link
+    meeting_url = calendar_event.meeting_url || calendar_event.hangout_link
+
     with {:ok, %{body: api_response}} <-
            RecallApi.update_bot(
              bot.recall_bot_id,
-             calendar_event.hangout_link,
+             meeting_url,
              DateTime.add(calendar_event.start_time, -join_minute_offset, :minute)
            ) do
       update_recall_bot(bot, %{
