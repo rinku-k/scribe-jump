@@ -213,6 +213,8 @@ Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
 ### Salesforce Modal UI
 
+![Update Salesforce Modal](update-modal.png)
+
 * **LiveView Component:** Located at `lib/social_scribe_web/live/meeting_live/salesforce_modal_component.ex`
 * **Contact Search:** Debounced input triggers Salesforce SOSL search, results displayed in dropdown
 * **AI Suggestions:** Fetched via `SalesforceSuggestions.generate_suggestions` which calls Gemini with transcript context
@@ -225,6 +227,8 @@ Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 ## 💬 Chat Interface
 
 ### AI-Powered Chat Agent
+
+![Chat Modal](chat-modal.png)
 
 * **Ask Anything:** A slide-out chat drawer available on meeting detail pages for asking questions about contacts and meetings
 * **Contact Tagging:** Type `@` to search and tag contacts from both HubSpot and Salesforce — the AI uses tagged contact data as context
