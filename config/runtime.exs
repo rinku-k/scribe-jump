@@ -77,11 +77,16 @@ if config_env() == :prod do
       pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
     ]
   else
-    # Standard TCP connection
+    # Standard TCP connection (Gigalixir PostgreSQL)
     [
       url: database_url,
       pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-      socket_options: maybe_ipv6
+      socket_options: maybe_ipv6,
+      ssl: true,
+      ssl_opts: [
+        verify: :verify_none,
+        cacerts: :public_key.cacerts_get()
+      ]
     ]
   end
 
