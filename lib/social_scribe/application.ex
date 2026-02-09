@@ -7,6 +7,9 @@ defmodule SocialScribe.Application do
 
   @impl true
   def start(_type, _args) do
+    # Auto-run pending migrations before starting the supervision tree
+    migrate()
+
     children = [
       SocialScribeWeb.Telemetry,
       SocialScribe.Repo,
@@ -34,5 +37,13 @@ defmodule SocialScribe.Application do
   def config_change(changed, _new, removed) do
     SocialScribeWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  defp migrate do
+    SocialScribe.Release.migrate()
+  rescue
+    e ->
+      require Logger
+      Logger.warning("Auto-migration skipped: #{Exception.message(e)}")
   end
 end
