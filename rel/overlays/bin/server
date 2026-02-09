@@ -1,8 +1,10 @@
 #!/bin/sh
 set -eu
 
+echo "SERVER_SCRIPT_STARTED"
 cd -P -- "$(dirname -- "$0")"
-echo "Running migrations..."
+echo "RUNNING_MIGRATIONS"
 ./social_scribe eval "SocialScribe.Release.migrate()"
-echo "Starting server..."
+echo "MIGRATIONS_FINISHED"
+echo "STARTING_SERVER"
 PHX_SERVER=true exec ./social_scribe start

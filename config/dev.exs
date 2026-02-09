@@ -1,14 +1,27 @@
 import Config
 
 # Configure your database
-config :social_scribe, SocialScribe.Repo,
-  username: "postgres",
-  password: "",
-  hostname: "127.0.0.1",
-  database: "social_scribe_dev",
-  stacktrace: true,
-  show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+if System.get_env("DATABASE_URL") do
+  config :social_scribe, SocialScribe.Repo,
+    url: System.get_env("DATABASE_URL"),
+    stacktrace: true,
+    show_sensitive_data_on_connection_error: true,
+    pool_size: 10,
+    ssl: true,
+    ssl_opts: [
+      verify: :verify_none,
+      cacerts: :public_key.cacerts_get()
+    ]
+else
+  config :social_scribe, SocialScribe.Repo,
+    username: "postgres",
+    password: "",
+    hostname: "127.0.0.1",
+    database: "social_scribe_dev",
+    stacktrace: true,
+    show_sensitive_data_on_connection_error: true,
+    pool_size: 10
+end
 
 # For development, we disable any cache and enable
 # debugging and code reloading.

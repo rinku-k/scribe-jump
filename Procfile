@@ -1,1 +1,1 @@
-web: bin/server
+web: echo "PROCFILE_STARTING" && bin/server
