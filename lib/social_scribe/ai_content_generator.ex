@@ -170,12 +170,25 @@ defmodule SocialScribe.AIContentGenerator do
           if has_crm_data do
             contact_data
             |> Enum.map(fn {source, contact} ->
+              # Filter out nil, empty, and id fields for cleaner context
               details =
                 contact
-                |> Enum.map(fn {field, value} -> "  - #{field}: #{value || "N/A"}" end)
+                |> Enum.filter(fn {field, value} ->
+                  field != :id and field != :display_name and
+                  value != nil and value != "" and value != "N/A"
+                end)
+                |> Enum.map(fn {field, value} ->
+                  # Format field names more readably
+                  field_name = field |> to_string() |> String.replace("_", " ") |> String.capitalize()
+                  "  - #{field_name}: #{value}"
+                end)
                 |> Enum.join("\n")
 
-              "Source: #{source}\n#{details}"
+              if details == "" do
+                "Source: #{source}\n  (No additional data available)"
+              else
+                "Source: #{source}\n#{details}"
+              end
             end)
             |> Enum.join("\n\n")
           else
@@ -206,12 +219,23 @@ defmodule SocialScribe.AIContentGenerator do
       The advisor is asking a question. You have access to both the meeting transcript AND CRM contact data.
       Use the appropriate data source(s) to provide a helpful, concise answer.
 
-      IMPORTANT INSTRUCTIONS FOR SOURCES:
+      IMPORTANT INSTRUCTIONS:
+      1. For general questions like "tell me about [person]" or "who is [person]":
+         - Provide a comprehensive summary using ALL available CRM data fields (name, email, phone, company, title, address, etc.)
+         - Also include any relevant information from the meeting transcript where this person is mentioned
+         - Format the response in a readable way with the key details
+
+      2. For specific questions (e.g., "what's their phone number"):
+         - Answer directly with the specific information requested
+
+      3. NEVER say you don't have information if CRM data is provided above - USE IT!
+         The CRM Contact Information section contains real data about the tagged contact.
+
+      INSTRUCTIONS FOR SOURCES:
       - If the answer comes ONLY from the Meeting transcript, set sources to ["Meeting"]
       - If the answer comes ONLY from CRM data (#{valid_sources_hint}), set sources to the specific CRM source(s) used
       - If the answer combines information from both the meeting AND CRM data, include all relevant sources
       - Be accurate about which sources you actually used to form your answer
-      - Do NOT include a source if you didn't use information from it
 
       CRM Contact Information:
       #{contact_info}
@@ -223,7 +247,7 @@ defmodule SocialScribe.AIContentGenerator do
 
       Respond in the following JSON format ONLY (no additional text):
       {
-        "answer": "Your clear, concise answer here. If referencing specific parts of the transcript, mention the approximate timestamp.",
+        "answer": "Your clear, concise answer here. For general 'tell me about' questions, summarize all available CRM data and meeting mentions. If referencing specific parts of the transcript, mention the approximate timestamp.",
         "sources": ["Meeting"] or ["Salesforce"] or ["HubSpot"] or ["Meeting", "Salesforce"] etc.
       }
       """
