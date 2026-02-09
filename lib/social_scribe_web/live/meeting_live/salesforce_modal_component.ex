@@ -126,29 +126,6 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   end
 
   @impl true
-  def handle_event("update_mapping", %{"field" => _field}, socket) do
-    if length(socket.assigns.suggestions) == 1 do
-      # Trigger CTA flow - apply updates for the single field
-      selected_contact = socket.assigns.selected_contact
-      credential = socket.assigns.credential
-
-      updates =
-        socket.assigns.suggestions
-        |> Enum.filter(& &1.apply)
-        |> Enum.into(%{}, fn s -> {s.field, s.new_value} end)
-
-      if Map.size(updates) > 0 do
-        send(self(), {:apply_salesforce_updates, updates, selected_contact, credential})
-        {:noreply, assign(socket, loading: true)}
-      else
-        {:noreply, socket}
-      end
-    else
-      {:noreply, socket}
-    end
-  end
-
-  @impl true
   def update(assigns, socket) do
     socket =
       socket
@@ -168,12 +145,28 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
     {:ok, socket}
   end
 
-  defp maybe_select_all_suggestions(socket, %{suggestions: suggestions})
-       when is_list(suggestions) do
-    assign(socket, suggestions: Enum.map(suggestions, &Map.put(&1, :apply, true)))
-  end
+  @impl true
+  def handle_event("update_mapping", %{"field" => _field}, socket) do
+    if length(socket.assigns.suggestions) == 1 do
+      # Trigger CTA flow - apply updates for the single field
+      selected_contact = socket.assigns.selected_contact
+      credential = socket.assigns.credential
 
-  defp maybe_select_all_suggestions(socket, _assigns), do: socket
+      updates =
+        socket.assigns.suggestions
+        |> Enum.filter(& &1.apply)
+        |> Enum.into(%{}, fn s -> {s.field, s.new_value} end)
+
+      if map_size(updates) > 0 do
+        send(self(), {:apply_salesforce_updates, updates, selected_contact, credential})
+        {:noreply, assign(socket, loading: true)}
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
 
   @impl true
   def handle_event("contact_search", %{"value" => query}, socket) do
@@ -327,6 +320,15 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   def handle_event("sf_apply_updates", _params, socket) do
     {:noreply, assign(socket, error: "Please select at least one field to update")}
   end
+
+  # --- Private helpers ---
+
+  defp maybe_select_all_suggestions(socket, %{suggestions: suggestions})
+       when is_list(suggestions) do
+    assign(socket, suggestions: Enum.map(suggestions, &Map.put(&1, :apply, true)))
+  end
+
+  defp maybe_select_all_suggestions(socket, _assigns), do: socket
 
   defp pluralize(word, 1), do: word
   defp pluralize(word, _count), do: word <> "s"

@@ -100,19 +100,19 @@ defmodule SocialScribeWeb.MeetingLiveShowTest do
     end
 
     test "can navigate to HubSpot modal", %{conn: conn, meeting: meeting} do
-      {:ok, view, _html} = live(conn, ~p"/dashboard/meetings/#{meeting.id}")
+      {:ok, _view, _html} = live(conn, ~p"/dashboard/meetings/#{meeting.id}")
 
-      {:ok, view, _html} = live(conn, ~p"/dashboard/meetings/#{meeting.id}/hubspot")
+      {:ok, hubspot_view, _html} = live(conn, ~p"/dashboard/meetings/#{meeting.id}/hubspot")
 
-      assert has_element?(view, "#hubspot-modal-wrapper")
+      assert has_element?(hubspot_view, "#hubspot-modal-wrapper")
     end
 
     test "can navigate to Salesforce modal", %{conn: conn, meeting: meeting} do
-      {:ok, view, _html} = live(conn, ~p"/dashboard/meetings/#{meeting.id}")
+      {:ok, _view, _html} = live(conn, ~p"/dashboard/meetings/#{meeting.id}")
 
-      {:ok, view, _html} = live(conn, ~p"/dashboard/meetings/#{meeting.id}/salesforce")
+      {:ok, salesforce_view, _html} = live(conn, ~p"/dashboard/meetings/#{meeting.id}/salesforce")
 
-      assert has_element?(view, "#salesforce-modal-wrapper")
+      assert has_element?(salesforce_view, "#salesforce-modal-wrapper")
     end
   end
 
@@ -231,7 +231,7 @@ defmodule SocialScribeWeb.MeetingLiveShowTest do
       }
     end
 
-    test "handles meeting without transcript gracefully", %{conn: conn} do
+    test "handles meeting without transcript gracefully", %{conn: _conn} do
       user = user_fixture()
       # Create meeting without transcript
       meeting = SocialScribe.MeetingsFixtures.meeting_fixture()

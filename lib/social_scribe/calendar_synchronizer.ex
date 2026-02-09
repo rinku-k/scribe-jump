@@ -1,6 +1,37 @@
 defmodule SocialScribe.CalendarSynchronizer do
   @moduledoc """
-  Fetches and syncs Google Calendar events.
+  Fetches and syncs Google Calendar events from connected Google accounts.
+
+  ## Overview
+
+  This module handles the synchronization of calendar events from Google Calendar
+  to the local database. It:
+
+  1. Fetches events from all connected Google accounts for a user
+  2. Detects meeting platforms (Google Meet, Zoom, Microsoft Teams)
+  3. Extracts meeting URLs from various fields (hangoutLink, location, description)
+  4. Creates or updates local calendar event records
+
+  ## Current Limitations
+
+  - **Primary calendar only**: Currently syncs only the user's primary calendar.
+    Secondary/shared calendars are not yet supported.
+
+  - **Meeting detection**: Only events with detectable meeting links are synced.
+    Events without video conferencing links are skipped.
+
+  - **Full sync**: Each sync fetches all events in the time window (yesterday to 7 days ahead).
+    Incremental sync using Google's `syncToken` is not yet implemented.
+
+  ## Future Improvements
+
+  To implement incremental sync:
+  1. Store `nextSyncToken` from Google Calendar API response in user_credentials
+  2. On subsequent syncs, use the stored token to fetch only changed events
+  3. Handle `410 Gone` responses by falling back to full sync
+  4. Track sync attempts and timestamps for debugging
+
+  See: https://developers.google.com/calendar/api/guides/sync
   """
 
   require Logger
@@ -12,11 +43,24 @@ defmodule SocialScribe.CalendarSynchronizer do
   alias SocialScribe.TokenRefresherApi
 
   @doc """
-  Syncs events for a user.
+  Syncs calendar events for all connected Google accounts of a user.
 
-  Currently, only works for the primary calendar and for meeting links that are either on the hangoutLink or location field.
+  Fetches events from yesterday to 7 days in the future and creates/updates
+  local calendar event records for events that have detectable meeting links.
 
-  #TODO: Add support for syncing only since the last sync time and record sync attempts
+  ## Parameters
+
+    * `user` - The user struct whose calendars should be synced
+
+  ## Returns
+
+    * `{:ok, :sync_complete}` - Sync completed (individual credential errors are logged but don't fail the overall sync)
+
+  ## Examples
+
+      iex> CalendarSynchronizer.sync_events_for_user(user)
+      {:ok, :sync_complete}
+
   """
   def sync_events_for_user(user) do
     user

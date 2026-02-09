@@ -1,4 +1,33 @@
 defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
+  @moduledoc """
+  LiveComponent for the HubSpot contact update modal.
+
+  Allows users to search HubSpot contacts, view AI-generated suggestions
+  based on meeting transcripts, and selectively update contact fields.
+
+  ## Features
+
+  - **Contact Search**: Debounced search input queries HubSpot API
+  - **AI Suggestions**: Uses Google Gemini to analyze meeting transcripts and
+    suggest updates to contact fields (phone, email, job title, etc.)
+  - **Selective Updates**: Checkbox per field allows users to choose which
+    suggestions to apply
+  - **Retry Logic**: Handles rate limiting with suggested wait times
+
+  ## Events
+
+  - `contact_search` - Triggers HubSpot contact search
+  - `select_contact` - Selects a contact and generates AI suggestions
+  - `toggle_suggestion` - Toggles a suggestion's apply state
+  - `apply_updates` - Applies selected updates to HubSpot
+  - `retry_generate_suggestions` - Retries after rate limiting
+
+  ## Required Assigns
+
+  - `:meeting` - The meeting struct with transcript data
+  - `:credential` - HubSpot OAuth credential for API calls
+  """
+
   use SocialScribeWeb, :live_component
 
   import SocialScribeWeb.ModalComponents
@@ -131,7 +160,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
         |> Enum.filter(& &1.apply)
         |> Enum.into(%{}, fn s -> {s.field, s.new_value} end)
 
-      if Map.size(updates) > 0 do
+      if map_size(updates) > 0 do
         send(self(), {:apply_hubspot_updates, updates, selected_contact, credential})
         {:noreply, assign(socket, loading: true)}
       else
