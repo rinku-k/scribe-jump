@@ -58,6 +58,11 @@ Hooks.ChatInput = {
         this.handleEvent("update_chat_input", ({ value }) => {
             this.el.value = value;
             this.autoResize();
+            // Refocus the input and move cursor to end after tagging a contact
+            this.el.focus();
+            this.el.setSelectionRange(value.length, value.length);
+            // Notify server that input is focused (in case blur fired when clicking dropdown)
+            this.pushEventTo(this.el, "input_focus", {});
         });
     },
     updated() {

@@ -246,14 +246,15 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   # === Chat message handlers ===
 
   @impl true
-  def handle_info({:chat_contact_search, query, component_id}, socket) do
+  def handle_info({:chat_contact_search, query, component_id, request_id}, socket) do
     results = search_contacts_for_chat(socket, query)
 
     send_update(SocialScribeWeb.Chat.ChatComponent,
       id: component_id,
       contact_results: results,
       contact_search_loading: false,
-      show_contact_dropdown: true
+      show_contact_dropdown: true,
+      search_request_id: request_id
     )
 
     {:noreply, socket}

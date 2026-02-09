@@ -272,11 +272,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     <!-- Input Area -->
       <div class="p-4 border-t border-gray-100 bg-white pb-8">
         <form phx-submit="send_message" phx-target={@myself} class="relative">
-          <div class={[
-            "border rounded-2xl p-3 shadow-sm bg-white relative transition-colors",
-            @input_focused && "border-blue-500",
-            !@input_focused && "border-gray-300"
-          ]}>
+          <div class="border rounded-2xl p-3 shadow-sm bg-white relative transition-colors border-gray-300 focus-within:border-blue-500">
             <button
               type="button"
               phx-click="toggle_add_context"
@@ -440,11 +436,22 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     """
   end
 
+  # Keys that are handled by maybe_apply_search_results and should not be blindly applied
+  @search_result_keys [:contact_results, :contact_search_loading, :show_contact_dropdown, :search_request_id]
+
   @impl true
   def update(assigns, socket) do
+    # Filter out search-related keys - they will be applied conditionally by maybe_apply_search_results
+    filtered_assigns =
+      if Map.has_key?(assigns, :search_request_id) do
+        Map.drop(assigns, @search_result_keys)
+      else
+        assigns
+      end
+
     socket =
       socket
-      |> assign(assigns)
+      |> assign(filtered_assigns)
       |> assign_new(:messages, fn -> [] end)
       |> assign_new(:chat_history, fn -> [] end)
       |> assign_new(:draft, fn -> "" end)
@@ -457,7 +464,9 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
       |> assign_new(:contact_search_loading, fn -> false end)
       |> assign_new(:conversation_contacts, fn -> [] end)
       |> assign_new(:just_tagged, fn -> false end)
+      |> assign_new(:search_request_id, fn -> nil end)
       |> maybe_update_crm_sources(assigns)
+      |> maybe_apply_search_results(assigns)
       |> maybe_append_ai_response(assigns)
 
     {:ok, socket}
@@ -476,6 +485,30 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
         socket
         |> assign(:has_hubspot, Accounts.get_user_hubspot_credential(user.id) != nil)
         |> assign(:has_salesforce, Accounts.get_user_salesforce_credential(user.id) != nil)
+    end
+  end
+
+  # Only apply search results if the request_id matches the current pending search.
+  # This prevents stale results from reopening the dropdown after a contact was tagged.
+  defp maybe_apply_search_results(socket, assigns) do
+    incoming_request_id = assigns[:search_request_id]
+    current_request_id = socket.assigns[:search_request_id]
+
+    cond do
+      # No search results in this update
+      is_nil(incoming_request_id) ->
+        socket
+
+      # Request ID matches - apply the results
+      incoming_request_id == current_request_id ->
+        socket
+        |> assign(:contact_results, assigns[:contact_results] || [])
+        |> assign(:contact_search_loading, assigns[:contact_search_loading] || false)
+        |> assign(:show_contact_dropdown, assigns[:show_contact_dropdown] || false)
+
+      # Stale request - ignore the results
+      true ->
+        socket
     end
   end
 
@@ -529,12 +562,27 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
       # Check for @mention trigger
       case ChatHelpers.detect_mention(value) do
         {:mention, query} when byte_size(query) >= 2 ->
-          socket = assign(socket, show_contact_dropdown: true, contact_search_loading: true)
-          send(self(), {:chat_contact_search, query, socket.assigns.id})
+          # Generate a unique request ID to track this search request
+          request_id = System.unique_integer([:positive])
+
+          socket =
+            assign(socket,
+              show_contact_dropdown: true,
+              contact_search_loading: true,
+              search_request_id: request_id
+            )
+
+          send(self(), {:chat_contact_search, query, socket.assigns.id, request_id})
           {:noreply, socket}
 
         _ ->
-          {:noreply, assign(socket, show_contact_dropdown: false)}
+          # No active mention - hide dropdown and invalidate any pending searches
+          {:noreply,
+           assign(socket,
+             show_contact_dropdown: false,
+             contact_results: [],
+             search_request_id: nil
+           )}
       end
     end
   end
@@ -559,7 +607,9 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
        show_contact_dropdown: false,
        contact_results: [],
        draft: draft,
-       just_tagged: true
+       just_tagged: true,
+       # Clear request ID to invalidate any pending search results
+       search_request_id: nil
      )
      |> push_event("update_chat_input", %{value: draft})}
   end
