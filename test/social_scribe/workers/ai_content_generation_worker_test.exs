@@ -129,5 +129,77 @@ defmodule SocialScribe.Workers.AIContentGenerationWorkerTest do
       refreshed_meeting = Meetings.get_meeting_with_details(meeting.id)
       assert is_nil(refreshed_meeting.follow_up_email)
     end
+
+    test "handles rate limit error from AI API" do
+      meeting = meeting_fixture()
+      meeting_transcript_fixture(%{meeting_id: meeting.id, content: @mock_transcript_data})
+
+      job_args = %{"meeting_id" => meeting.id}
+
+      expect(AIGeneratorMock, :generate_follow_up_email, fn _ ->
+        {:error, :rate_limited}
+      end)
+
+      assert AIContentGenerationWorker.perform(%Oban.Job{args: job_args}) ==
+               {:error, :rate_limited}
+    end
+
+    test "handles internal server error from AI API" do
+      meeting = meeting_fixture()
+      meeting_transcript_fixture(%{meeting_id: meeting.id, content: @mock_transcript_data})
+
+      job_args = %{"meeting_id" => meeting.id}
+
+      expect(AIGeneratorMock, :generate_follow_up_email, fn _ ->
+        {:error, :internal_server_error}
+      end)
+
+      assert AIContentGenerationWorker.perform(%Oban.Job{args: job_args}) ==
+               {:error, :internal_server_error}
+    end
+  end
+
+  describe "perform/1 - edge cases" do
+    setup do
+      stub_with(AIGeneratorMock, SocialScribe.AIContentGenerator)
+      :ok
+    end
+
+    test "handles empty transcript content" do
+      meeting = meeting_fixture()
+      meeting_transcript_fixture(%{meeting_id: meeting.id, content: %{"data" => []}})
+
+      job_args = %{"meeting_id" => meeting.id}
+
+      # Empty transcript still has structure
+      result = AIContentGenerationWorker.perform(%Oban.Job{args: job_args})
+      assert is_tuple(result)
+    end
+
+    test "handles meeting without calendar event" do
+      meeting = meeting_fixture()
+
+      job_args = %{"meeting_id" => meeting.id}
+
+      result = AIContentGenerationWorker.perform(%Oban.Job{args: job_args})
+      # Should fail due to missing participants
+      assert result == {:error, :no_participants}
+    end
+
+    test "handles job with string meeting_id" do
+      meeting = meeting_fixture()
+      meeting_transcript_fixture(%{meeting_id: meeting.id, content: @mock_transcript_data})
+
+      # meeting_id as string (common in JSON args)
+      job_args = %{"meeting_id" => Integer.to_string(meeting.id)}
+
+      expect(AIGeneratorMock, :generate_follow_up_email, fn _ ->
+        {:ok, @generated_email_draft}
+      end)
+
+      # Should handle string conversion gracefully
+      result = AIContentGenerationWorker.perform(%Oban.Job{args: job_args})
+      assert result == :ok
+    end
   end
 end
