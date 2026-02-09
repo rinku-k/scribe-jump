@@ -77,7 +77,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
           />
         <% else %>
           <form phx-submit="apply_updates" phx-change="toggle_suggestion" phx-target={@myself}>
-            <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+            <div class="space-y-4 max-h-[60vh] overflow-y-auto">
               <.suggestion_card
                 :for={suggestion <- @suggestions}
                 suggestion={suggestion}
@@ -90,6 +90,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
               submit_text="Update HubSpot"
               submit_class="bg-hubspot-button hover:bg-hubspot-button-hover"
               icon_src={~p"/images/hubspot-white.webp"}
+              icon_class="w-7 h-7"
               disabled={@selected_count == 0}
               loading={@loading}
               loading_text="Updating..."

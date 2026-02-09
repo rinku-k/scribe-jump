@@ -86,7 +86,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
           />
         <% else %>
           <form phx-submit="sf_apply_updates" phx-change="sf_toggle_suggestion" phx-target={@myself}>
-            <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+            <div class="space-y-4 max-h-[60vh] overflow-y-auto">
               <.suggestion_card
                 :for={suggestion <- @suggestions}
                 suggestion={suggestion}
@@ -97,8 +97,9 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
             <.modal_footer
               cancel_patch={@patch}
               submit_text="Update Salesforce"
-              submit_class="bg-blue-600 hover:bg-blue-700"
-              icon_src={~p"/images/salesforce.webp"}
+              submit_class="bg-salesforce-brand hover:bg-salesforce-hover"
+              icon_src={~p"/images/salesforce-white.webp"}
+              icon_class="w-7 h-7"
               disabled={@selected_count == 0}
               loading={@loading}
               loading_text="Updating..."
