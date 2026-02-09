@@ -116,7 +116,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
           <div :for={message <- @messages} class="space-y-4">
             <!-- User Message -->
             <div :if={message.role == :user} class="flex justify-end">
-              <div class="bg-gray-100 text-gray-900 px-4 py-3 rounded-2xl rounded-tr-sm text-[15px] leading-relaxed max-w-[90%]">
+              <div class="bg-[#f0f2f5] text-gray-900 px-4 py-2.5 rounded-2xl rounded-tr-sm text-[15px] leading-relaxed max-w-[90%] font-sans flex items-center flex-wrap gap-x-1 whitespace-pre-wrap">
                 <.message_content
                   content={message.content}
                   contacts={Map.get(message, :tagged_contacts, [])}
@@ -143,25 +143,31 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
                 :if={message[:sources] && is_list(message.sources)}
                 class="flex items-center gap-2 mt-2"
               >
-                <span class="text-xs text-gray-400">Sources</span>
+                <span class="text-[11px] text-gray-400 font-medium">Sources</span>
                 <div class="flex -space-x-1">
                   <span
-                    :if={:meeting in message.sources}
-                    class="bg-black text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-30 border border-white"
+                    :if={:jump in message.sources}
+                    class="bg-gray-100 rounded-full w-4 h-4 inline-flex items-center justify-center z-40 border border-white"
                   >
-                    M
+                    <.source_icon type={:jump} class="w-2.5 h-2.5" />
+                  </span>
+                  <span
+                    :if={:meeting in message.sources}
+                    class="bg-gray-100 rounded-full w-4 h-4 inline-flex items-center justify-center z-30 border border-white"
+                  >
+                    <.source_icon type={:meeting} class="w-2.5 h-2.5" />
                   </span>
                   <span
                     :if={:hubspot in message.sources}
-                    class="bg-orange-500 text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-20 border border-white"
+                    class="bg-gray-100 rounded-full w-4 h-4 inline-flex items-center justify-center z-20 border border-white"
                   >
-                    H
+                    <.source_icon type={:hubspot} class="w-2.5 h-2.5" />
                   </span>
                   <span
                     :if={:salesforce in message.sources}
-                    class="bg-blue-600 text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-10 border border-white"
+                    class="bg-gray-100 rounded-full w-4 h-4 inline-flex items-center justify-center z-10 border border-white"
                   >
-                    S
+                    <.source_icon type={:salesforce} class="w-2.5 h-2.5" />
                   </span>
                 </div>
               </div>
@@ -276,21 +282,29 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
             <div :if={Enum.any?(@tagged_contacts)} class="flex flex-wrap gap-1.5 mb-2">
               <span
                 :for={tc <- @tagged_contacts}
-                class="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded-full text-sm"
+                class="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 bg-[#f0f2f5] rounded-full text-sm"
               >
-                <span class={[
-                  "rounded-full text-white w-5 h-5 inline-flex items-center justify-center text-[10px] font-bold flex-shrink-0",
-                  avatar_bg_class(tc.provider)
-                ]}>
-                  {contact_initials(tc.name)}
-                </span>
-                <span class="font-medium text-gray-800 text-[13px]">{tc.name}</span>
+                <div class="relative flex-shrink-0">
+                  <span class={[
+                    "rounded-full text-white w-[18px] h-[18px] inline-flex items-center justify-center text-[9px] font-bold",
+                    avatar_bg_class(tc.provider)
+                  ]}>
+                    {contact_initials(tc.name)}
+                  </span>
+                  <span
+                    :if={tc.provider != "unknown"}
+                    class="absolute -bottom-0.5 -right-0.5 rounded-full w-[9px] h-[9px] border border-white flex items-center justify-center bg-gray-100"
+                  >
+                    <.source_icon type={tc.provider} class="w-[5px] h-[5px]" />
+                  </span>
+                </div>
+                <span class="font-medium text-gray-900 text-[13px]">{tc.name}</span>
                 <button
                   type="button"
                   phx-click="remove_tag"
                   phx-value-id={tc.id}
                   phx-target={@myself}
-                  class="text-gray-400 hover:text-gray-600 ml-0.5 p-0.5 rounded-full hover:bg-gray-100"
+                  class="text-gray-400 hover:text-gray-600 ml-0.5 p-0.5 rounded-full hover:bg-gray-200"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -314,6 +328,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
               phx-blur="input_blur"
               phx-target={@myself}
               phx-debounce="100"
+              phx-hook="ChatInput"
               class="w-full text-[15px] text-gray-600 placeholder-gray-400 border-0 focus:ring-0 p-0 resize-none min-h-[40px]"
               placeholder="Ask anything about your meetings"
               rows="2"
@@ -322,22 +337,25 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
 
             <div class="flex items-center justify-between mt-2">
               <div class="flex items-center gap-1">
-                <span class="text-xs text-gray-400 mr-1">Sources</span>
+                <span class="text-[11px] text-gray-400 font-medium mr-1">Sources</span>
                 <div class="flex -space-x-1">
-                  <span class="bg-black text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-30 border border-white">
-                    M
+                  <span class="bg-gray-100 rounded-full w-4 h-4 inline-flex items-center justify-center z-40 border border-white">
+                    <.source_icon type={:jump} class="w-2.5 h-2.5" />
+                  </span>
+                  <span class="bg-gray-100 rounded-full w-4 h-4 inline-flex items-center justify-center z-30 border border-white">
+                    <.source_icon type={:meeting} class="w-2.5 h-2.5" />
                   </span>
                   <span
                     :if={@has_hubspot}
-                    class="bg-orange-500 text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-20 border border-white"
+                    class="bg-gray-100 rounded-full w-4 h-4 inline-flex items-center justify-center z-20 border border-white"
                   >
-                    H
+                    <.source_icon type={:hubspot} class="w-2.5 h-2.5" />
                   </span>
                   <span
                     :if={@has_salesforce}
-                    class="bg-blue-600 text-white rounded-full w-4 h-4 inline-flex items-center justify-center text-[8px] z-10 border border-white"
+                    class="bg-gray-100 rounded-full w-4 h-4 inline-flex items-center justify-center z-10 border border-white"
                   >
-                    S
+                    <.source_icon type={:salesforce} class="w-2.5 h-2.5" />
                   </span>
                 </div>
               </div>
@@ -380,7 +398,21 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     assigns = assign(assigns, :segments, segments)
 
     ~H"""
-    <%= for segment <- @segments do %><%= if segment.type == :contact do %><span class="inline-flex items-center gap-1 mx-0.5 align-middle"><span class={["rounded-full text-white w-5 h-5 inline-flex items-center justify-center text-[10px] font-bold flex-shrink-0", avatar_bg_class(segment.provider)]}><%= segment.initials %></span><span class="font-medium"><%= segment.name %></span></span><% else %><%= segment.text %><% end %><% end %>
+    <%= for segment <- @segments do %><%#
+      %><%= if segment.type == :contact do %><span
+          class={[
+            "inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full whitespace-nowrap mx-0.5 transition-all text-gray-900 shrink-0",
+            @mode == :user && "bg-white border border-gray-100 shadow-sm",
+            @mode == :assistant && "bg-[#f0f2f5]"
+          ]}
+          style="display: inline-flex !important; vertical-align: middle; line-height: 1; height: 28px; width: fit-content; position: relative; top: -1px;"
+        ><span class="relative flex-shrink-0 flex items-center justify-center w-5 h-5"><span class={["rounded-full text-white w-5 h-5 inline-flex items-center justify-center text-[10px] font-bold flex-shrink-0", avatar_bg_class(segment.provider)]}><%= segment.initials %></span><span
+                :if={segment.provider != "unknown"}
+                class={[
+                  "absolute -bottom-0.5 -right-0.5 rounded-full w-[10px] h-[10px] border border-white flex items-center justify-center overflow-hidden bg-gray-100"
+                ]}
+              ><.source_icon type={segment.provider} class="w-[6px] h-[6px]" /></span></span><span class="font-semibold text-[13px] leading-none mb-[0.5px] whitespace-nowrap"><%= segment.name %></span></span><% else %><span class="inline-block align-middle whitespace-pre-wrap"><%= segment.text %></span><% end %><%#
+    %><% end %>
     """
   end
 
@@ -676,7 +708,37 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     |> String.upcase()
   end
 
-  defp avatar_bg_class("salesforce"), do: "bg-blue-500"
-  defp avatar_bg_class("hubspot"), do: "bg-orange-500"
-  defp avatar_bg_class(_), do: "bg-gray-500"
+  defp avatar_bg_class("salesforce"), do: "bg-[#00a1e0]"
+  defp avatar_bg_class("hubspot"), do: "bg-[#ff7a59]"
+  defp avatar_bg_class("meeting"), do: "bg-black"
+  defp avatar_bg_class("jump"), do: "bg-white"
+  defp avatar_bg_class("gmail"), do: "bg-white"
+  defp avatar_bg_class("emoney"), do: "bg-white"
+  defp avatar_bg_class(_), do: "bg-gray-400"
+
+  defp source_icon(assigns) do
+    assigns = assign_new(assigns, :class, fn -> "w-full h-full" end)
+
+    ~H"""
+    <%= case entry_type(@type) do %>
+      <% :jump -> %>
+        <img src="/images/jump-icon.png" class={@class} alt="Jump" />
+      <% :salesforce -> %>
+        <img src="/images/salesforce.webp" class={@class} alt="Salesforce" />
+      <% :hubspot -> %>
+        <img src="/images/hubspot.webp" class={@class} alt="HubSpot" />
+      <% :meeting -> %>
+        <img src="/images/gmail.webp" class={@class} alt="Meeting" />
+      <% :gmail -> %>
+        <img src="/images/gmail.webp" class={@class} alt="Gmail" />
+      <% :emoney -> %>
+        <img src="/images/emoney.webp" class={@class} alt="eMoney" />
+      <% _ -> %>
+    <% end %>
+    """
+  end
+
+  defp entry_type(type) when is_atom(type), do: type
+  defp entry_type(type) when is_binary(type), do: String.to_existing_atom(type)
+  defp entry_type(_), do: :unknown
 end

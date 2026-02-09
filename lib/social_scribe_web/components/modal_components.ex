@@ -350,13 +350,22 @@ defmodule SocialScribeWeb.ModalComponents do
         </div>
 
         <div class="flex items-center gap-3 pt-0.5">
-          <button type="button" class="text-xs text-hubspot-hide hover:text-hubspot-hide-hover font-medium">
-            Hide details
+          <button
+            type="button"
+            phx-click={
+              JS.toggle(to: "#details-#{@suggestion.field}")
+              |> JS.toggle(to: "#hide-text-#{@suggestion.field}")
+              |> JS.toggle(to: "#show-text-#{@suggestion.field}")
+            }
+            class="text-xs text-hubspot-hide hover:text-hubspot-hide-hover font-medium"
+          >
+            <span id={"hide-text-#{@suggestion.field}"}>Hide details</span>
+            <span id={"show-text-#{@suggestion.field}"} class="hidden">Show details</span>
           </button>
         </div>
       </div>
 
-      <div class="mt-2 pl-8">
+      <div id={"details-#{@suggestion.field}"} class="mt-2 pl-8">
         <div class="text-sm font-medium text-slate-700 leading-5 ml-1">{@suggestion.label}</div>
 
         <div class="relative mt-2">
@@ -468,6 +477,7 @@ defmodule SocialScribeWeb.ModalComponents do
   attr :disabled, :boolean, default: false
   attr :loading_text, :string, default: "Processing..."
   attr :info_text, :string, default: nil
+  attr :icon_src, :string, default: nil
   attr :class, :string, default: nil
 
   def modal_footer(assigns) do
@@ -499,10 +509,11 @@ defmodule SocialScribeWeb.ModalComponents do
           type="submit"
           disabled={@loading || @disabled}
           class={
-            "px-5 py-2.5 rounded-lg shadow-sm text-sm font-medium text-white " <>
+            "inline-flex items-center px-5 py-2.5 rounded-lg shadow-sm text-sm font-medium text-white " <>
               @submit_class <> " disabled:opacity-50"
           }
         >
+          <img :if={!@loading && @icon_src} src={@icon_src} class="w-5 h-5 mr-2 object-contain" />
           <span :if={@loading}>{@loading_text}</span>
           <span :if={!@loading}>{@submit_text}</span>
         </button>

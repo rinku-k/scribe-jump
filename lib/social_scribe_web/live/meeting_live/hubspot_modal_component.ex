@@ -89,6 +89,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
               cancel_patch={@patch}
               submit_text="Update HubSpot"
               submit_class="bg-hubspot-button hover:bg-hubspot-button-hover"
+              icon_src={~p"/images/hubspot-white.webp"}
               disabled={@selected_count == 0}
               loading={@loading}
               loading_text="Updating..."

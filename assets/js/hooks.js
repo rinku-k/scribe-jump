@@ -34,4 +34,33 @@ Hooks.ChatScroll = {
     }
 }
 
+Hooks.ChatInput = {
+    mounted() {
+        this.autoResize();
+        this.el.addEventListener("input", () => this.autoResize());
+
+        this.el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                // Find and trigger form submission
+                const form = this.el.closest("form");
+                if (form) {
+                    if (typeof form.requestSubmit === "function") {
+                        form.requestSubmit();
+                    } else {
+                        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+                    }
+                }
+            }
+        });
+    },
+    updated() {
+        this.autoResize();
+    },
+    autoResize() {
+        this.el.style.height = "auto";
+        this.el.style.height = (this.el.scrollHeight) + "px";
+    }
+}
+
 export default Hooks
