@@ -103,18 +103,20 @@ defmodule SocialScribeWeb.Chat.ChatHelpers do
   @doc """
   Returns the Tailwind CSS class for avatar background based on provider.
 
+  Uses theme colors defined in `tailwind.config.js` instead of hardcoded hex values.
+
   ## Examples
 
       iex> avatar_bg_class("hubspot")
-      "bg-[#ff7a59]"
+      "bg-hubspot-brand"
 
       iex> avatar_bg_class("salesforce")
-      "bg-[#00a1e0]"
+      "bg-salesforce-brand"
 
   """
   @spec avatar_bg_class(String.t()) :: String.t()
-  def avatar_bg_class("salesforce"), do: "bg-[#00a1e0]"
-  def avatar_bg_class("hubspot"), do: "bg-[#ff7a59]"
+  def avatar_bg_class("salesforce"), do: "bg-salesforce-brand"
+  def avatar_bg_class("hubspot"), do: "bg-hubspot-brand"
   def avatar_bg_class("meeting"), do: "bg-black"
   def avatar_bg_class("jump"), do: "bg-white"
   def avatar_bg_class("gmail"), do: "bg-white"

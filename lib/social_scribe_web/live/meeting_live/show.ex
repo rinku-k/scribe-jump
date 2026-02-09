@@ -3,7 +3,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
 
   import SocialScribeWeb.PlatformLogo
   import SocialScribeWeb.ClipboardButton
-  import SocialScribeWeb.ModalComponents, only: [hubspot_modal: 1]
+  import SocialScribeWeb.ModalComponents, only: [crm_modal: 1]
 
   alias SocialScribe.Meetings
   alias SocialScribe.Automations
@@ -96,18 +96,20 @@ defmodule SocialScribeWeb.MeetingLive.Show do
     {:noreply, socket}
   end
 
+  # === HubSpot message handlers ===
+
   @impl true
   def handle_info({:hubspot_search, query, credential}, socket) do
     case HubspotApi.search_contacts(credential, query) do
       {:ok, contacts} ->
-        send_update(SocialScribeWeb.MeetingLive.HubspotModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "hubspot-modal",
           contacts: contacts,
           searching: false
         )
 
       {:error, reason} ->
-        send_update(SocialScribeWeb.MeetingLive.HubspotModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "hubspot-modal",
           error: "Failed to search contacts: #{inspect(reason)}",
           searching: false
@@ -123,7 +125,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
       {:ok, suggestions} ->
         merged = HubspotSuggestions.merge_with_contact(suggestions, contact)
 
-        send_update(SocialScribeWeb.MeetingLive.HubspotModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "hubspot-modal",
           step: :suggestions,
           suggestions: merged,
@@ -131,9 +133,9 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         )
 
       {:error, reason} ->
-        {message, retry_after_seconds} = hubspot_suggestions_error_message(reason)
+        {message, retry_after_seconds} = suggestions_error_message(reason)
 
-        send_update(SocialScribeWeb.MeetingLive.HubspotModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "hubspot-modal",
           error: message,
           retry_after_seconds: retry_after_seconds,
@@ -156,7 +158,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         {:noreply, socket}
 
       {:error, reason} ->
-        send_update(SocialScribeWeb.MeetingLive.HubspotModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "hubspot-modal",
           error: "Failed to update contact: #{inspect(reason)}",
           loading: false
@@ -172,14 +174,14 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   def handle_info({:salesforce_search, query, credential}, socket) do
     case SalesforceApi.search_contacts(credential, query) do
       {:ok, contacts} ->
-        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "salesforce-modal",
           contacts: contacts,
           searching: false
         )
 
       {:error, reason} ->
-        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "salesforce-modal",
           error: "Failed to search contacts: #{inspect(reason)}",
           searching: false
@@ -195,7 +197,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
       {:ok, suggestions} ->
         merged = SalesforceSuggestions.merge_with_contact(suggestions, contact)
 
-        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "salesforce-modal",
           step: :suggestions,
           suggestions: merged,
@@ -203,9 +205,9 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         )
 
       {:error, reason} ->
-        {message, retry_after_seconds} = salesforce_suggestions_error_message(reason)
+        {message, retry_after_seconds} = suggestions_error_message(reason)
 
-        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "salesforce-modal",
           error: message,
           retry_after_seconds: retry_after_seconds,
@@ -231,7 +233,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         {:noreply, socket}
 
       {:error, reason} ->
-        send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
+        send_update(SocialScribeWeb.MeetingLive.CrmModalComponent,
           id: "salesforce-modal",
           error: "Failed to update contact: #{inspect(reason)}",
           loading: false
@@ -340,7 +342,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   end
 
 
-  defp hubspot_suggestions_error_message({:api_error, 429, error_body}) when is_map(error_body) do
+  defp suggestions_error_message({:api_error, 429, error_body}) when is_map(error_body) do
     retry_after_seconds = parse_gemini_retry_delay_seconds(error_body)
 
     base =
@@ -351,15 +353,15 @@ defmodule SocialScribeWeb.MeetingLive.Show do
     {base, retry_after_seconds}
   end
 
-  defp hubspot_suggestions_error_message({:api_error, status, _error_body}) do
+  defp suggestions_error_message({:api_error, status, _error_body}) do
     {"Gemini API error (HTTP #{status}) while generating suggestions. Please try again.", nil}
   end
 
-  defp hubspot_suggestions_error_message({:config_error, message}) when is_binary(message) do
+  defp suggestions_error_message({:config_error, message}) when is_binary(message) do
     {message, nil}
   end
 
-  defp hubspot_suggestions_error_message(reason) do
+  defp suggestions_error_message(reason) do
     {"Failed to generate suggestions. Please try again. (#{inspect(reason)})", nil}
   end
 
@@ -479,27 +481,4 @@ defmodule SocialScribeWeb.MeetingLive.Show do
 
 
 
-  defp salesforce_suggestions_error_message({:api_error, 429, error_body})
-       when is_map(error_body) do
-    retry_after_seconds = parse_gemini_retry_delay_seconds(error_body)
-
-    base =
-      "Gemini API quota/rate limit exceeded while generating suggestions. " <>
-        "Please wait#{if(retry_after_seconds, do: " ~#{retry_after_seconds}s", else: "")} " <>
-        "and try again."
-
-    {base, retry_after_seconds}
-  end
-
-  defp salesforce_suggestions_error_message({:api_error, status, _error_body}) do
-    {"Gemini API error (HTTP #{status}) while generating suggestions. Please try again.", nil}
-  end
-
-  defp salesforce_suggestions_error_message({:config_error, message}) when is_binary(message) do
-    {message, nil}
-  end
-
-  defp salesforce_suggestions_error_message(reason) do
-    {"Failed to generate suggestions. Please try again. (#{inspect(reason)})", nil}
-  end
 end
