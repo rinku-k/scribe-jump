@@ -119,7 +119,19 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :ueberauth, Ueberauth.Strategy.Google.OAuth,
+    client_id: System.get_env("GOOGLE_CLIENT_ID"),
+    client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
     redirect_uri: "https://" <> host <> "/auth/google/callback"
+
+  config :ueberauth, Ueberauth.Strategy.LinkedIn.OAuth,
+    client_id: System.get_env("LINKEDIN_CLIENT_ID"),
+    client_secret: System.get_env("LINKEDIN_CLIENT_SECRET"),
+    redirect_uri: "https://" <> host <> "/auth/linkedin/callback"
+
+  config :ueberauth, Ueberauth.Strategy.Facebook.OAuth,
+    client_id: System.get_env("FACEBOOK_CLIENT_ID"),
+    client_secret: System.get_env("FACEBOOK_CLIENT_SECRET"),
+    redirect_uri: "https://" <> host <> "/auth/facebook/callback"
 
   # ## SSL Support
   #
