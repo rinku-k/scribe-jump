@@ -73,9 +73,10 @@ Social Scribe is a powerful Elixir and Phoenix LiveView application designed to 
 * **Backend:** Elixir, Phoenix LiveView
 * **Database:** PostgreSQL
 * **Background Jobs:** Oban
-* **Authentication:** Ueberauth (for Google, LinkedIn, Facebook, HubSpot OAuth)
+* **Authentication:** Ueberauth (for Google, LinkedIn, Facebook, HubSpot, Salesforce OAuth)
 * **Meeting Transcription:** Recall.ai API
 * **AI Content Generation:** Google Gemini API (Flash models)
+* **CRM Integrations:** HubSpot API, Salesforce REST API
 * **Frontend:** Tailwind CSS, Heroicons (via `tailwind.config.js`)
 * **Progress Bar:** Topbar.js for page loading indication.
 
@@ -129,6 +130,9 @@ Follow these steps to get SocialScribe running on your local machine.
         * `HUBSPOT_CLIENT_ID`: Your HubSpot App Client ID.
         * `HUBSPOT_CLIENT_SECRET`: Your HubSpot App Client Secret.
         * `HUBSPOT_REDIRECT_URI`: `"http://localhost:4000/auth/hubspot/callback"`
+        * `SALESFORCE_CLIENT_ID`: Your Salesforce Connected App Client ID.
+        * `SALESFORCE_CLIENT_SECRET`: Your Salesforce Connected App Client Secret.
+        * `SALESFORCE_REDIRECT_URI`: `"http://localhost:4000/auth/salesforce/callback"`
 
 4.  **Start the Phoenix Server:**
     ```bash
@@ -187,6 +191,52 @@ Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
 ---
 
+## 🔗 Salesforce Integration
+
+### Salesforce OAuth Integration
+
+* **Custom Ueberauth Strategy:** Implemented in `lib/ueberauth/strategy/salesforce.ex` mirroring the HubSpot pattern
+* **OAuth 2.0 Flow:** Handles authorization code flow with Salesforce's `/services/oauth2/authorize` and `/services/oauth2/token` endpoints
+* **Credential Storage:** Credentials stored in `user_credentials` table with `provider: "salesforce"`, using a composite `uid` of `instance_url|user_id` to support multi-org Salesforce environments
+* **Token Refresh:**
+    * `SalesforceTokenRefresher` Oban cron worker runs every 5 minutes to proactively refresh tokens expiring within 10 minutes
+    * Internal `with_token_refresh/2` wrapper automatically refreshes expired tokens on API calls and retries the request
+    * Salesforce refresh tokens don't rotate by default; access tokens last ~2 hours
+    * Refresh failures are logged; users are prompted to re-authenticate if refresh token is invalid
+
+### Salesforce API Client
+
+* **SOSL Search:** Contact search uses SOSL (Salesforce Object Search Language) for full-text search across all contact fields
+* **REST API v59.0:** Supports get, search, and update operations on Contact objects
+* **Field Mapping:** Maps internal CRM field names to Salesforce API field names (e.g., `jobtitle` → `Title`, `company` → `AccountId`)
+* **Auto Token Refresh:** All API calls wrapped with `with_token_refresh/2` for seamless token management
+
+### Salesforce Modal UI
+
+* **LiveView Component:** Located at `lib/social_scribe_web/live/meeting_live/salesforce_modal_component.ex`
+* **Contact Search:** Debounced input triggers Salesforce SOSL search, results displayed in dropdown
+* **AI Suggestions:** Fetched via `SalesforceSuggestions.generate_suggestions` which calls Gemini with transcript context
+* **Suggestion Cards:** Same rich UI as HubSpot modal with field labels, current vs. suggested values, context, and timestamps
+* **Selective Updates:** Checkbox per field allows selective updates; "Update Salesforce" button disabled until at least one field selected
+* **Form Submission:** Batch-updates selected contact properties via `SalesforceApi.update_contact`
+
+---
+
+## 💬 Chat Interface
+
+### AI-Powered Chat Agent
+
+* **Ask Anything:** A slide-out chat drawer available on meeting detail pages for asking questions about contacts and meetings
+* **Contact Tagging:** Type `@` to search and tag contacts from both HubSpot and Salesforce — the AI uses tagged contact data as context
+* **AI-Powered Answers:** Questions are answered using Google Gemini, with context from meeting transcripts and tagged contact data
+* **Sources Indicator:** Visual badges (M = Meeting, H = HubSpot, S = Salesforce) show which data sources are available
+* **Chat/History Tabs:** Switch between active chat and conversation history
+* **New Conversation:** Start fresh conversations with the "+" button
+* **Auto-Scroll:** JavaScript hook ensures the chat always scrolls to the latest message
+* **Responsive Design:** Full-width on mobile, 400px side panel on desktop
+
+---
+
 ## ⚠️ Known Issues & Limitations
 
 * **Facebook Posting & App Review:**
@@ -196,6 +246,7 @@ Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 * **Error Handling & UI Polish:** While core paths are robustly handled, comprehensive error feedback for all API edge cases and advanced UI polish are areas for continued development beyond the initial 48-hour scope.
 * **Prompt Templating for Automations:** The current automation prompt templating is basic (string replacement). A more sophisticated templating engine (e.g., EEx or a dedicated library) would be a future improvement.
 * **Agenda Integration:** Currently we only sync when the calendar event has a `hangoutLink` or `location` field with a zoom or google meet link.
+* If meeting is synced in Social Scribe app, the later edits and deletion does not update the same in Social Scribe App
 ---
 
 ## 📚 Learn More (Phoenix Framework)

@@ -2,11 +2,30 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
   @moduledoc """
   A chat drawer component that allows users to ask questions about contacts
   in both HubSpot and Salesforce. Supports contact tagging and AI-powered answers.
+
+  ## Features
+
+  - **Contact Tagging**: Type `@` to search and tag contacts from HubSpot or Salesforce
+  - **AI-Powered Answers**: Questions are answered using Google Gemini with context
+    from meeting transcripts and tagged contact data
+  - **Chat/History Tabs**: Switch between active chat and conversation history
+  - **Auto-Scroll**: JavaScript hook ensures the chat always scrolls to latest message
+  - **Responsive Design**: Full-width on mobile, 400px side panel on desktop
+
+  ## Events
+
+  - `send_message` - Sends user message to AI for processing
+  - `chat_keyup` - Handles typing, @mention detection
+  - `tag_contact` - Tags a selected contact
+  - `remove_tag` - Removes a tagged contact
+  - `switch_tab` - Switches between Chat and History tabs
+  - `new_chat` - Starts a new conversation
   """
 
   use SocialScribeWeb, :live_component
 
   alias SocialScribe.Accounts
+  alias SocialScribeWeb.Chat.ChatHelpers
 
   @impl true
   def render(assigns) do
@@ -91,7 +110,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
           </div>
         </div>
       </div>
-
+      
     <!-- Messages Area -->
       <div id="chat-messages" phx-hook="ChatScroll" class="flex-1 overflow-y-auto px-6 py-4 space-y-6">
         <%= if @active_tab == "chat" do %>
@@ -106,12 +125,12 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
               </span>
             </div>
           </div>
-
+          
     <!-- Welcome Message -->
           <div class="text-gray-800 text-[15px] leading-relaxed">
             I can answer questions about Jump meetings and data – just ask!
           </div>
-
+          
     <!-- Message History -->
           <div :for={message <- @messages} class="space-y-4">
             <!-- User Message -->
@@ -124,7 +143,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
                 />
               </div>
             </div>
-
+            
     <!-- AI Response -->
             <div
               :if={message.role == :assistant}
@@ -172,7 +191,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
                 </div>
               </div>
             </div>
-
+            
     <!-- Loading indicator -->
             <div :if={message.role == :loading} class="flex items-center gap-2 text-gray-500">
               <div class="flex gap-1">
@@ -194,7 +213,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
               </div>
               <span class="text-sm">Thinking...</span>
             </div>
-
+            
     <!-- Error message -->
             <div :if={message.role == :error} class="bg-red-50 border border-red-200 rounded-lg p-3">
               <p class="text-red-700 text-sm">{message.content}</p>
@@ -211,7 +230,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
           </div>
         <% end %>
       </div>
-
+      
     <!-- Contact Tag Dropdown -->
       <div :if={@show_contact_dropdown} class="px-6 pb-2">
         <div class="border border-gray-200 rounded-lg bg-white shadow-lg max-h-40 overflow-y-auto">
@@ -246,7 +265,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
           </button>
         </div>
       </div>
-
+      
     <!-- Input Area -->
       <div class="p-4 border-t border-gray-100 bg-white pb-8">
         <form phx-submit="send_message" phx-target={@myself} class="relative">
@@ -277,8 +296,8 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
               </svg>
               Add context
             </button>
-
-            <!-- Tagged contact capsules (shown after selecting a contact) -->
+            
+    <!-- Tagged contact capsules (shown after selecting a contact) -->
             <div :if={Enum.any?(@tagged_contacts)} class="flex flex-wrap gap-1.5 mb-2">
               <span
                 :for={tc <- @tagged_contacts}
@@ -287,9 +306,9 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
                 <div class="relative flex-shrink-0">
                   <span class={[
                     "rounded-full text-white w-[18px] h-[18px] inline-flex items-center justify-center text-[9px] font-bold",
-                    avatar_bg_class(tc.provider)
+                    ChatHelpers.avatar_bg_class(tc.provider)
                   ]}>
-                    {contact_initials(tc.name)}
+                    {ChatHelpers.contact_initials(tc.name)}
                   </span>
                   <span
                     :if={tc.provider != "unknown"}
@@ -394,25 +413,40 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
 
   # Function component: renders message text with inline contact capsules
   defp message_content(assigns) do
-    segments = parse_content_segments(assigns.content, assigns.contacts || [], assigns.mode)
+    segments =
+      ChatHelpers.parse_content_segments(assigns.content, assigns.contacts || [], assigns.mode)
+
     assigns = assign(assigns, :segments, segments)
 
     ~H"""
-    <%= for segment <- @segments do %><%#
-      %><%= if segment.type == :contact do %><span
+    <%= for segment <- @segments do %>
+      <%= if segment.type == :contact do %>
+        <span
           class={[
             "inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full whitespace-nowrap mx-0.5 transition-all text-gray-900 shrink-0",
             @mode == :user && "bg-white border border-gray-100 shadow-sm",
             @mode == :assistant && "bg-[#f0f2f5]"
           ]}
           style="display: inline-flex !important; vertical-align: middle; line-height: 1; height: 28px; width: fit-content; position: relative; top: -1px;"
-        ><span class="relative flex-shrink-0 flex items-center justify-center w-5 h-5"><span class={["rounded-full text-white w-5 h-5 inline-flex items-center justify-center text-[10px] font-bold flex-shrink-0", avatar_bg_class(segment.provider)]}><%= segment.initials %></span><span
-                :if={segment.provider != "unknown"}
-                class={[
-                  "absolute -bottom-0.5 -right-0.5 rounded-full w-[10px] h-[10px] border border-white flex items-center justify-center overflow-hidden bg-gray-100"
-                ]}
-              ><.source_icon type={segment.provider} class="w-[6px] h-[6px]" /></span></span><span class="font-semibold text-[13px] leading-none mb-[0.5px] whitespace-nowrap"><%= segment.name %></span></span><% else %><span class="inline-block align-middle whitespace-pre-wrap"><%= segment.text %></span><% end %><%#
-    %><% end %>
+        >
+          <span class="relative flex-shrink-0 flex items-center justify-center w-5 h-5">
+            <span class={[
+              "rounded-full text-white w-5 h-5 inline-flex items-center justify-center text-[10px] font-bold flex-shrink-0",
+              ChatHelpers.avatar_bg_class(segment.provider)
+            ]}>
+              {segment.initials}
+            </span><span
+              :if={segment.provider != "unknown"}
+              class={[
+                "absolute -bottom-0.5 -right-0.5 rounded-full w-[10px] h-[10px] border border-white flex items-center justify-center overflow-hidden bg-gray-100"
+              ]}
+            ><.source_icon type={segment.provider} class="w-[6px] h-[6px]" /></span>
+          </span><span class="font-semibold text-[13px] leading-none mb-[0.5px] whitespace-nowrap"><%= segment.name %></span>
+        </span>
+      <% else %>
+        <span class="inline-block align-middle whitespace-pre-wrap">{segment.text}</span>
+      <% end %>
+    <% end %>
     """
   end
 
@@ -495,7 +529,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     socket = assign(socket, draft: value, tagged_contacts: tagged_contacts)
 
     # Check for @mention trigger
-    case detect_mention(value) do
+    case ChatHelpers.detect_mention(value) do
       {:mention, query} when byte_size(query) >= 2 ->
         socket = assign(socket, show_contact_dropdown: true, contact_search_loading: true)
         send(self(), {:chat_contact_search, query, socket.assigns.id})
@@ -511,7 +545,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     contact = %{id: id, name: String.trim(name), provider: provider}
 
     # Replace the @mention partial with @FullName in the draft (keeps it inline)
-    draft = replace_last_mention(socket.assigns.draft, contact.name)
+    draft = ChatHelpers.replace_last_mention(socket.assigns.draft, contact.name)
 
     tagged =
       if Enum.any?(socket.assigns.tagged_contacts, &(&1.id == id)),
@@ -594,19 +628,6 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
 
   # --- Private helpers ---
 
-  # Detect @mention pattern at the end of text
-  defp detect_mention(text) do
-    case Regex.run(~r/@(\w*)$/, text) do
-      [_, query] -> {:mention, query}
-      _ -> :none
-    end
-  end
-
-  # Replace the last @mention partial with @FullName (keeps contact inline in draft)
-  defp replace_last_mention(text, full_name) do
-    Regex.replace(~r/@\w*$/, text, "@#{full_name} ")
-  end
-
   # Handle ai_response from parent LiveView
   defp maybe_append_ai_response(socket, %{ai_response: ai_response}) do
     updated_messages =
@@ -619,108 +640,12 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
 
   defp maybe_append_ai_response(socket, _assigns), do: socket
 
-  # --- Contact capsule rendering helpers ---
-
-  # Parse message content into segments of text and contact capsule references
-  defp parse_content_segments(content, contacts, _mode) when contacts == [] or is_nil(contacts) do
-    [%{type: :text, text: content}]
-  end
-
-  defp parse_content_segments(content, contacts, :user) do
-    # For user messages, match @FullName patterns
-    build_and_split(content, contacts, "@")
-  end
-
-  defp parse_content_segments(content, contacts, :assistant) do
-    # For AI messages, match plain Name patterns (no @ prefix)
-    build_and_split(content, contacts, "")
-  end
-
-  # Build regex from contact names and split content into tagged segments
-  defp build_and_split(content, contacts, prefix) do
-    # Collect name variants: full name + first name, sorted longest first
-    name_variants =
-      contacts
-      |> Enum.flat_map(fn contact ->
-        first_name = contact.name |> String.split() |> List.first()
-
-        if first_name != contact.name,
-          do: [{contact.name, contact}, {first_name, contact}],
-          else: [{contact.name, contact}]
-      end)
-      |> Enum.sort_by(fn {name, _} -> -String.length(name) end)
-
-    pattern_parts =
-      name_variants
-      |> Enum.map(fn {name, _} -> "#{prefix}#{Regex.escape(name)}" end)
-      |> Enum.uniq()
-
-    case pattern_parts do
-      [] ->
-        [%{type: :text, text: content}]
-
-      parts ->
-        pattern_str = Enum.join(parts, "|")
-
-        case Regex.compile(pattern_str) do
-          {:ok, regex} ->
-            regex
-            |> Regex.split(content, include_captures: true)
-            |> Enum.map(fn part ->
-              clean = String.replace_prefix(part, "@", "")
-              match = find_contact_by_name(clean, name_variants)
-
-              case match do
-                nil ->
-                  %{type: :text, text: part}
-
-                contact ->
-                  %{
-                    type: :contact,
-                    name: contact.name,
-                    initials: contact_initials(contact.name),
-                    provider: Map.get(contact, :provider, "unknown")
-                  }
-              end
-            end)
-            |> Enum.reject(&(&1.type == :text && &1.text == ""))
-
-          {:error, _} ->
-            [%{type: :text, text: content}]
-        end
-    end
-  end
-
-  defp find_contact_by_name(clean_name, name_variants) do
-    downcased = String.downcase(clean_name)
-
-    case Enum.find(name_variants, fn {name, _} -> String.downcase(name) == downcased end) do
-      {_, contact} -> contact
-      nil -> nil
-    end
-  end
-
-  defp contact_initials(name) do
-    name
-    |> String.split()
-    |> Enum.map(&String.first/1)
-    |> Enum.join()
-    |> String.upcase()
-  end
-
-  defp avatar_bg_class("salesforce"), do: "bg-[#00a1e0]"
-  defp avatar_bg_class("hubspot"), do: "bg-[#ff7a59]"
-  defp avatar_bg_class("meeting"), do: "bg-black"
-  defp avatar_bg_class("jump"), do: "bg-white"
-  defp avatar_bg_class("gmail"), do: "bg-white"
-  defp avatar_bg_class("emoney"), do: "bg-white"
-  defp avatar_bg_class(_), do: "bg-gray-400"
-
+  # Renders source icon for CRM providers
   defp source_icon(assigns) do
     assigns = assign_new(assigns, :class, fn -> "w-full h-full" end)
 
     ~H"""
-    <%= case entry_type(@type) do %>
+    <%= case ChatHelpers.entry_type(@type) do %>
       <% :jump -> %>
         <img src="/images/jump-icon.png" class={@class} alt="Jump" />
       <% :salesforce -> %>
@@ -737,8 +662,4 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     <% end %>
     """
   end
-
-  defp entry_type(type) when is_atom(type), do: type
-  defp entry_type(type) when is_binary(type), do: String.to_existing_atom(type)
-  defp entry_type(_), do: :unknown
 end

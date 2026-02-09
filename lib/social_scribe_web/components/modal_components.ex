@@ -37,7 +37,9 @@ defmodule SocialScribeWeb.ModalComponents do
   def contact_select(assigns) do
     ~H"""
     <div class="space-y-1">
-      <label for={"#{@id}-input"} class="block text-sm font-medium text-slate-700">Select Contact</label>
+      <label for={"#{@id}-input"} class="block text-sm font-medium text-slate-700">
+        Select Contact
+      </label>
       <div class="relative">
         <%= if @selected_contact do %>
           <button
@@ -51,7 +53,11 @@ defmodule SocialScribeWeb.ModalComponents do
             class="relative w-full bg-white border border-hubspot-input rounded-lg pl-1.5 pr-10 py-[5px] text-left cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
           >
             <span class="flex items-center">
-              <.avatar firstname={@selected_contact.firstname} lastname={@selected_contact.lastname} size={:sm} />
+              <.avatar
+                firstname={@selected_contact.firstname}
+                lastname={@selected_contact.lastname}
+                size={:sm}
+              />
               <span class="ml-1.5 block truncate text-slate-900">
                 {@selected_contact.firstname} {@selected_contact.lastname}
               </span>
@@ -103,7 +109,7 @@ defmodule SocialScribeWeb.ModalComponents do
             phx-click="clear_contact"
             phx-target={@target}
             role="option"
-            aria-selected={"false"}
+            aria-selected="false"
             class="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm text-slate-700 cursor-pointer"
           >
             Clear selection
@@ -111,7 +117,10 @@ defmodule SocialScribeWeb.ModalComponents do
           <div :if={@loading} class="px-4 py-2 text-sm text-gray-500">
             Searching...
           </div>
-          <div :if={!@loading && Enum.empty?(@contacts) && @query != ""} class="px-4 py-2 text-sm text-gray-500">
+          <div
+            :if={!@loading && Enum.empty?(@contacts) && @query != ""}
+            class="px-4 py-2 text-sm text-gray-500"
+          >
             No contacts found
           </div>
           <button
@@ -121,7 +130,7 @@ defmodule SocialScribeWeb.ModalComponents do
             phx-value-id={contact.id}
             phx-target={@target}
             role="option"
-            aria-selected={"false"}
+            aria-selected="false"
             class="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center space-x-3 cursor-pointer"
           >
             <.avatar firstname={contact.firstname} lastname={contact.lastname} size={:sm} />
@@ -303,7 +312,10 @@ defmodule SocialScribeWeb.ModalComponents do
           placeholder="No existing value"
           class={[
             "block w-full shadow-sm text-sm bg-white border border-hubspot-input rounded-[7px] py-1.5 px-2",
-            if(@current_value && @current_value != "", do: "line-through text-slate-500", else: "text-slate-400")
+            if(@current_value && @current_value != "",
+              do: "line-through text-slate-500",
+              else: "text-slate-400"
+            )
           ]}
         />
       </div>
@@ -386,7 +398,10 @@ defmodule SocialScribeWeb.ModalComponents do
               placeholder="No existing value"
               class={[
                 "block w-full shadow-sm text-sm bg-white border border-gray-300 rounded-[7px] py-1.5 px-2",
-                if(@suggestion.current_value && @suggestion.current_value != "", do: "line-through text-gray-500", else: "text-gray-400")
+                if(@suggestion.current_value && @suggestion.current_value != "",
+                  do: "line-through text-gray-500",
+                  else: "text-gray-400"
+                )
               ]}
             />
 
@@ -414,13 +429,15 @@ defmodule SocialScribeWeb.ModalComponents do
             Update mapping
           </button>
           <span></span>
-          <span :if={@suggestion[:timestamp]} class="text-xs text-slate-500 justify-self-start">Found in transcript<span
+          <span :if={@suggestion[:timestamp]} class="text-xs text-slate-500 justify-self-start">
+            Found in transcript<span
               phx-click="transcript_time_clicked"
               class="text-hubspot-link hover:underline cursor-help"
               title={@suggestion[:context]}
             >
               ({@suggestion[:timestamp]})
-            </span></span>
+            </span>
+          </span>
         </div>
       </div>
     </div>
@@ -478,6 +495,7 @@ defmodule SocialScribeWeb.ModalComponents do
   attr :loading_text, :string, default: "Processing..."
   attr :icon_src, :string, default: nil
   attr :icon_class, :string, default: "w-5 h-5"
+  attr :info_text, :string, default: nil
   attr :class, :string, default: nil
 
   def modal_footer(assigns) do
@@ -513,7 +531,11 @@ defmodule SocialScribeWeb.ModalComponents do
               @submit_class <> " disabled:opacity-50"
           }
         >
-          <img :if={!@loading && @icon_src} src={@icon_src} class={["mr-2 object-contain", @icon_class]} />
+          <img
+            :if={!@loading && @icon_src}
+            src={@icon_src}
+            class={["mr-2 object-contain", @icon_class]}
+          />
           <span :if={@loading}>{@loading_text}</span>
           <span :if={!@loading}>{@submit_text}</span>
         </button>
@@ -588,7 +610,11 @@ defmodule SocialScribeWeb.ModalComponents do
       data-cancel={JS.exec(@on_cancel, "phx-remove")}
       class="relative z-50 hidden"
     >
-      <div id={"#{@id}-bg"} class="bg-hubspot-overlay/90 fixed inset-0 transition-opacity" aria-hidden="true" />
+      <div
+        id={"#{@id}-bg"}
+        class="bg-hubspot-overlay/90 fixed inset-0 transition-opacity"
+        aria-hidden="true"
+      />
       <div
         class="fixed inset-0 overflow-y-auto"
         aria-labelledby={"#{@id}-title"}
@@ -648,8 +674,7 @@ defmodule SocialScribeWeb.ModalComponents do
       to: "##{id}-container",
       time: 200,
       transition:
-        {"transition-all ease-in duration-200",
-         "opacity-100 translate-y-0 sm:scale-100",
+        {"transition-all ease-in duration-200", "opacity-100 translate-y-0 sm:scale-100",
          "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"}
     )
     |> JS.hide(to: "##{id}", transition: {"block", "block", "hidden"})
