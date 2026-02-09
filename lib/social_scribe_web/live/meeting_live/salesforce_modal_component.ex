@@ -69,7 +69,20 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   attr :patch, :string, required: true
 
   defp sf_suggestions_section(assigns) do
-    assigns = assign(assigns, :selected_count, Enum.count(assigns.suggestions, & &1.apply))
+    # Currently Object and integration are always 1 to match the UI requirements
+    selected_count = Enum.count(assigns.suggestions, & &1.apply)
+    object_count = if(selected_count > 0, do: 1, else: 0)
+    integration_count = if(selected_count > 0, do: 1, else: 0)
+
+    info_text =
+      "#{object_count} #{pluralize("object", object_count)}, " <>
+        "#{selected_count} #{pluralize("field", selected_count)} in " <>
+        "#{integration_count} #{pluralize("integration", integration_count)} selected to update"
+
+    assigns =
+      assigns
+      |> assign(:selected_count, selected_count)
+      |> assign(:info_text, info_text)
 
     ~H"""
     <div class="space-y-4">
@@ -103,7 +116,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
               disabled={@selected_count == 0}
               loading={@loading}
               loading_text="Updating..."
-              info_text={"#{@selected_count} Field(s) selected"}
+              info_text={@info_text}
             />
           </form>
         <% end %>
@@ -314,4 +327,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   def handle_event("sf_apply_updates", _params, socket) do
     {:noreply, assign(socket, error: "Please select at least one field to update")}
   end
+
+  defp pluralize(word, 1), do: word
+  defp pluralize(word, _count), do: word <> "s"
 end
