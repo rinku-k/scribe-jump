@@ -149,14 +149,17 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
               :if={message.role == :assistant}
               class="text-gray-800 text-[15px] leading-relaxed space-y-2"
             >
-              <div class="prose prose-sm max-w-none">
-                <p :for={paragraph <- String.split(message.content, "\n\n")} class="mb-2">
+              <div class="max-w-none">
+                <div
+                  :for={paragraph <- String.split(message.content, "\n\n")}
+                  class="mb-2 leading-relaxed"
+                >
                   <.message_content
                     content={paragraph}
                     contacts={@conversation_contacts}
                     mode={:assistant}
                   />
-                </p>
+                </div>
               </div>
               <div
                 :if={message[:sources] && is_list(message.sources)}
@@ -322,6 +325,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
                   type="button"
                   phx-click="remove_tag"
                   phx-value-id={tc.id}
+                  phx-value-provider={tc.provider}
                   phx-target={@myself}
                   class="text-gray-400 hover:text-gray-600 ml-0.5 p-0.5 rounded-full hover:bg-gray-200"
                 >
@@ -419,34 +423,20 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
     assigns = assign(assigns, :segments, segments)
 
     ~H"""
-    <%= for segment <- @segments do %>
-      <%= if segment.type == :contact do %>
-        <span
+    <span class="inline items-baseline"><%= for segment <- @segments do %><%= if segment.type == :contact do %><span
           class={[
-            "inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full whitespace-nowrap mx-0.5 transition-all text-gray-900 shrink-0",
+            "inline-flex items-center gap-1 pl-1 pr-2 py-0.5 rounded-full whitespace-nowrap mx-0.5 text-gray-900",
             @mode == :user && "bg-white border border-gray-100 shadow-sm",
             @mode == :assistant && "bg-chat-bubble"
           ]}
-          style="display: inline-flex !important; vertical-align: middle; line-height: 1; height: 28px; width: fit-content; position: relative; top: -1px;"
-        >
-          <span class="relative flex-shrink-0 flex items-center justify-center w-5 h-5">
-            <span class={[
-              "rounded-full text-white w-5 h-5 inline-flex items-center justify-center text-[10px] font-bold flex-shrink-0",
+          style="display: inline-flex; vertical-align: baseline;"
+        ><span class="relative flex-shrink-0 flex items-center justify-center w-[18px] h-[18px]"><span class={[
+              "rounded-full text-white w-[18px] h-[18px] inline-flex items-center justify-center text-[9px] font-bold flex-shrink-0",
               ChatHelpers.avatar_bg_class(segment.provider)
-            ]}>
-              {segment.initials}
-            </span><span
+            ]}>{segment.initials}</span><span
               :if={segment.provider != "unknown"}
-              class={[
-                "absolute -bottom-0.5 -right-0.5 rounded-full w-[10px] h-[10px] border border-white flex items-center justify-center overflow-hidden bg-gray-100"
-              ]}
-            ><.source_icon type={segment.provider} class="w-[6px] h-[6px]" /></span>
-          </span><span class="font-semibold text-[13px] leading-none mb-[0.5px] whitespace-nowrap"><%= segment.name %></span>
-        </span>
-      <% else %>
-        <span class="inline-block align-middle whitespace-pre-wrap">{segment.text}</span>
-      <% end %>
-    <% end %>
+              class="absolute -bottom-0.5 -right-0.5 rounded-full w-[9px] h-[9px] border border-white flex items-center justify-center overflow-hidden bg-gray-100"
+            ><.source_icon type={segment.provider} class="w-[5px] h-[5px]" /></span></span><span class="font-semibold text-[13px] leading-none whitespace-nowrap"><%= segment.name %></span></span><% else %><%= segment.text %><% end %><% end %></span>
     """
   end
 
@@ -478,6 +468,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
       |> assign_new(:contact_results, fn -> [] end)
       |> assign_new(:contact_search_loading, fn -> false end)
       |> assign_new(:conversation_contacts, fn -> [] end)
+      |> assign_new(:just_tagged, fn -> false end)
       |> assign(:has_hubspot, has_hubspot)
       |> assign(:has_salesforce, has_salesforce)
       |> maybe_append_ai_response(assigns)
@@ -520,23 +511,28 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
 
   @impl true
   def handle_event("chat_keyup", %{"value" => value}, socket) do
-    # Sync tagged contacts: remove any whose @Name was deleted from the draft
-    tagged_contacts =
-      Enum.filter(socket.assigns.tagged_contacts, fn contact ->
-        String.contains?(value, "@#{contact.name}")
-      end)
+    # If we just tagged a contact, skip dropdown detection for this keyup
+    if Map.get(socket.assigns, :just_tagged, false) do
+      {:noreply, assign(socket, just_tagged: false)}
+    else
+      # Sync tagged contacts: remove any whose @Name was deleted from the draft
+      tagged_contacts =
+        Enum.filter(socket.assigns.tagged_contacts, fn contact ->
+          String.contains?(value, "@#{contact.name}[#{contact.provider}]")
+        end)
 
-    socket = assign(socket, draft: value, tagged_contacts: tagged_contacts)
+      socket = assign(socket, draft: value, tagged_contacts: tagged_contacts)
 
-    # Check for @mention trigger
-    case ChatHelpers.detect_mention(value) do
-      {:mention, query} when byte_size(query) >= 2 ->
-        socket = assign(socket, show_contact_dropdown: true, contact_search_loading: true)
-        send(self(), {:chat_contact_search, query, socket.assigns.id})
-        {:noreply, socket}
+      # Check for @mention trigger
+      case ChatHelpers.detect_mention(value) do
+        {:mention, query} when byte_size(query) >= 2 ->
+          socket = assign(socket, show_contact_dropdown: true, contact_search_loading: true)
+          send(self(), {:chat_contact_search, query, socket.assigns.id})
+          {:noreply, socket}
 
-      _ ->
-        {:noreply, assign(socket, show_contact_dropdown: false)}
+        _ ->
+          {:noreply, assign(socket, show_contact_dropdown: false)}
+      end
     end
   end
 
@@ -544,33 +540,37 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
   def handle_event("tag_contact", %{"id" => id, "name" => name, "provider" => provider}, socket) do
     contact = %{id: id, name: String.trim(name), provider: provider}
 
-    # Replace the @mention partial with @FullName in the draft (keeps it inline)
-    draft = ChatHelpers.replace_last_mention(socket.assigns.draft, contact.name)
+    # Replace the @mention partial with @FullName[provider] in the draft (keeps it inline and unique per CRM)
+    draft = ChatHelpers.replace_last_mention(socket.assigns.draft, contact.name, provider)
 
+    # Check for duplicate by both id and provider (same contact from same CRM)
     tagged =
-      if Enum.any?(socket.assigns.tagged_contacts, &(&1.id == id)),
+      if Enum.any?(socket.assigns.tagged_contacts, &(&1.id == id && &1.provider == provider)),
         do: socket.assigns.tagged_contacts,
         else: socket.assigns.tagged_contacts ++ [contact]
 
     {:noreply,
-     assign(socket,
+     socket
+     |> assign(
        tagged_contacts: tagged,
        show_contact_dropdown: false,
        contact_results: [],
-       draft: draft
-     )}
+       draft: draft,
+       just_tagged: true
+     )
+     |> push_event("update_chat_input", %{value: draft})}
   end
 
   @impl true
-  def handle_event("remove_tag", %{"id" => id}, socket) do
-    contact = Enum.find(socket.assigns.tagged_contacts, &(&1.id == id))
-    tagged = Enum.reject(socket.assigns.tagged_contacts, &(&1.id == id))
+  def handle_event("remove_tag", %{"id" => id, "provider" => provider}, socket) do
+    contact = Enum.find(socket.assigns.tagged_contacts, &(&1.id == id && &1.provider == provider))
+    tagged = Enum.reject(socket.assigns.tagged_contacts, &(&1.id == id && &1.provider == provider))
 
-    # Also remove @Name from draft if contact found
+    # Also remove @Name[provider] from draft if contact found
     draft =
       if contact do
         socket.assigns.draft
-        |> String.replace("@#{contact.name}", "")
+        |> String.replace("@#{contact.name}[#{contact.provider}]", "")
         |> String.replace(~r/\s{2,}/, " ")
         |> String.trim()
       else

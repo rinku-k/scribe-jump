@@ -53,6 +53,12 @@ Hooks.ChatInput = {
                 }
             }
         });
+
+        // Handle server-side input value updates (e.g., after tagging a contact)
+        this.handleEvent("update_chat_input", ({ value }) => {
+            this.el.value = value;
+            this.autoResize();
+        });
     },
     updated() {
         this.autoResize();

@@ -35,17 +35,19 @@ defmodule SocialScribeWeb.Chat.ChatHelpers do
   end
 
   @doc """
-  Replaces the last @mention partial with the full contact name.
+  Replaces the last @mention partial with the full contact name and provider.
+
+  Uses format `@Name[provider]` to uniquely identify contacts from different CRMs.
 
   ## Examples
 
-      iex> replace_last_mention("Hello @jo", "John Doe")
-      "Hello @John Doe "
+      iex> replace_last_mention("Hello @jo", "John Doe", "hubspot")
+      "Hello @John Doe[hubspot] "
 
   """
-  @spec replace_last_mention(String.t(), String.t()) :: String.t()
-  def replace_last_mention(text, full_name) do
-    Regex.replace(~r/@\w*$/, text, "@#{full_name} ")
+  @spec replace_last_mention(String.t(), String.t(), String.t()) :: String.t()
+  def replace_last_mention(text, full_name, provider) do
+    Regex.replace(~r/@\w*$/, text, "@#{full_name}[#{provider}] ")
   end
 
   @doc """
@@ -70,8 +72,8 @@ defmodule SocialScribeWeb.Chat.ChatHelpers do
   end
 
   def parse_content_segments(content, contacts, :user) do
-    # For user messages, match @FullName patterns
-    build_and_split(content, contacts, "@")
+    # For user messages, match @FullName[provider] patterns
+    build_and_split_user(content, contacts)
   end
 
   def parse_content_segments(content, contacts, :assistant) do
@@ -141,6 +143,56 @@ defmodule SocialScribeWeb.Chat.ChatHelpers do
   def entry_type(_), do: :unknown
 
   # --- Private helpers ---
+
+  # Build regex for user messages: match @Name[provider] patterns
+  defp build_and_split_user(content, contacts) do
+    # Build patterns for each contact with their provider
+    pattern_parts =
+      contacts
+      |> Enum.map(fn contact ->
+        "@#{Regex.escape(contact.name)}\\[#{Regex.escape(contact.provider)}\\]"
+      end)
+      |> Enum.uniq()
+
+    case pattern_parts do
+      [] ->
+        [%{type: :text, text: content}]
+
+      parts ->
+        pattern_str = Enum.join(parts, "|")
+
+        case Regex.compile(pattern_str) do
+          {:ok, regex} ->
+            regex
+            |> Regex.split(content, include_captures: true)
+            |> Enum.map(fn part ->
+              # Parse @Name[provider] format
+              case Regex.run(~r/@(.+)\[(.+)\]/, part) do
+                [_, name, provider] ->
+                  contact = Enum.find(contacts, &(&1.name == name && &1.provider == provider))
+
+                  if contact do
+                    %{
+                      type: :contact,
+                      name: contact.name,
+                      initials: contact_initials(contact.name),
+                      provider: contact.provider
+                    }
+                  else
+                    %{type: :text, text: part}
+                  end
+
+                _ ->
+                  %{type: :text, text: part}
+              end
+            end)
+            |> Enum.reject(&(&1.type == :text && &1.text == ""))
+
+          {:error, _} ->
+            [%{type: :text, text: content}]
+        end
+    end
+  end
 
   # Build regex from contact names and split content into tagged segments
   defp build_and_split(content, contacts, prefix) do
