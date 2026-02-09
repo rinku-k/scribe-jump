@@ -476,8 +476,8 @@ defmodule SocialScribeWeb.ModalComponents do
   attr :loading, :boolean, default: false
   attr :disabled, :boolean, default: false
   attr :loading_text, :string, default: "Processing..."
-  attr :info_text, :string, default: nil
   attr :icon_src, :string, default: nil
+  attr :icon_class, :string, default: "w-5 h-5"
   attr :class, :string, default: nil
 
   def modal_footer(assigns) do
@@ -513,7 +513,7 @@ defmodule SocialScribeWeb.ModalComponents do
               @submit_class <> " disabled:opacity-50"
           }
         >
-          <img :if={!@loading && @icon_src} src={@icon_src} class="w-5 h-5 mr-2 object-contain" />
+          <img :if={!@loading && @icon_src} src={@icon_src} class={["mr-2 object-contain", @icon_class]} />
           <span :if={@loading}>{@loading_text}</span>
           <span :if={!@loading}>{@submit_text}</span>
         </button>
