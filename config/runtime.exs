@@ -58,32 +58,39 @@ if config_env() == :prod do
   # Parse DATABASE_URL for Cloud SQL Unix socket connections
   # Format: ecto://user:pass@localhost/db?socket=/cloudsql/project:region:instance
   uri = URI.parse(database_url)
-  socket_dir = if uri.query do
-    uri.query
-    |> URI.decode_query()
-    |> Map.get("socket")
-  end
 
-  repo_config = if socket_dir do
-    # For Cloud SQL socket connections, configure manually (don't use URL with host)
-    [userinfo_user, userinfo_pass] = String.split(uri.userinfo || ":", ":")
-    database = String.trim_leading(uri.path || "", "/")
+  socket_dir =
+    if uri.query do
+      uri.query
+      |> URI.decode_query()
+      |> Map.get("socket")
+    end
 
-    [
-      username: userinfo_user,
-      password: userinfo_pass,
-      database: database,
-      socket_dir: socket_dir,
-      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
-    ]
-  else
-    # Standard TCP connection
-    [
-      url: database_url,
-      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
-      
-    ]
-  end
+  repo_config =
+    if socket_dir do
+      # For Cloud SQL socket connections, configure manually (don't use URL with host)
+      [userinfo_user, userinfo_pass] = String.split(uri.userinfo || ":", ":")
+      database = String.trim_leading(uri.path || "", "/")
+
+      [
+        username: userinfo_user,
+        password: userinfo_pass,
+        database: database,
+        socket_dir: socket_dir,
+        pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
+      ]
+    else
+      # Standard TCP connection (Gigalixir PostgreSQL)
+      [
+        url: database_url,
+        pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+        ssl: true,
+        ssl_opts: [
+          verify: :verify_none,
+          cacerts: :public_key.cacerts_get()
+        ]
+      ]
+    end
 
   config :social_scribe, SocialScribe.Repo, repo_config
 
@@ -115,7 +122,19 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :ueberauth, Ueberauth.Strategy.Google.OAuth,
+    client_id: System.get_env("GOOGLE_CLIENT_ID"),
+    client_secret: System.get_env("GOOGLE_CLIENT_SECRET"),
     redirect_uri: "https://" <> host <> "/auth/google/callback"
+
+  config :ueberauth, Ueberauth.Strategy.LinkedIn.OAuth,
+    client_id: System.get_env("LINKEDIN_CLIENT_ID"),
+    client_secret: System.get_env("LINKEDIN_CLIENT_SECRET"),
+    redirect_uri: "https://" <> host <> "/auth/linkedin/callback"
+
+  config :ueberauth, Ueberauth.Strategy.Facebook.OAuth,
+    client_id: System.get_env("FACEBOOK_CLIENT_ID"),
+    client_secret: System.get_env("FACEBOOK_CLIENT_SECRET"),
+    redirect_uri: "https://" <> host <> "/auth/facebook/callback"
 
   # ## SSL Support
   #
