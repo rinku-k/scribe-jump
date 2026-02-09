@@ -1,24 +1,53 @@
-defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
+defmodule SocialScribeWeb.MeetingLive.CrmModalComponent do
   @moduledoc """
-  LiveComponent for the Salesforce contact update modal.
-  Allows searching Salesforce contacts, viewing AI-generated suggestions,
-  and selectively updating contact fields.
+  Unified LiveComponent for CRM contact update modals.
+
+  Supports HubSpot, Salesforce, and future CRM integrations through
+  configuration-driven rendering. All CRM-specific values (display name,
+  message atoms, button styling, icon paths) are sourced from `CrmConfig`.
+
+  ## Features
+
+  - **Contact Search**: Debounced search input queries the CRM API
+  - **AI Suggestions**: Uses Google Gemini to analyze meeting transcripts and
+    suggest updates to contact fields (phone, email, job title, etc.)
+  - **Selective Updates**: Checkbox per field allows users to choose which
+    suggestions to apply
+  - **Retry Logic**: Handles rate limiting with suggested wait times
+
+  ## Events
+
+  - `contact_search` - Triggers CRM contact search
+  - `select_contact` - Selects a contact and generates AI suggestions
+  - `toggle_suggestion` - Toggles a suggestion's apply state
+  - `apply_updates` - Applies selected updates to the CRM
+  - `retry_generate_suggestions` - Retries after rate limiting
+
+  ## Required Assigns
+
+  - `:crm_type` - The CRM type atom (`:hubspot` or `:salesforce`)
+  - `:meeting` - The meeting struct with transcript data
+  - `:credential` - CRM OAuth credential for API calls
   """
 
   use SocialScribeWeb, :live_component
 
   import SocialScribeWeb.ModalComponents
 
+  alias SocialScribeWeb.MeetingLive.CrmConfig
+
   @impl true
   def render(assigns) do
+    config = CrmConfig.get(assigns.crm_type)
     assigns = assign(assigns, :patch, ~p"/dashboard/meetings/#{assigns.meeting}")
-    assigns = assign_new(assigns, :modal_id, fn -> "salesforce-modal-wrapper" end)
+    assigns = assign_new(assigns, :modal_id, fn -> "#{config.modal_id_prefix}-modal-wrapper" end)
+    assigns = assign(assigns, :config, config)
 
     ~H"""
     <div class="space-y-6">
       <div>
         <h2 id={"#{@modal_id}-title"} class="text-xl font-medium tracking-tight text-slate-900">
-          Update in Salesforce
+          Update in {@config.display_name}
         </h2>
         <p id={"#{@modal_id}-description"} class="mt-2 text-base font-light leading-7 text-slate-500">
           Here are suggested updates to sync with your integrations based on this
@@ -34,13 +63,13 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
         query={@query}
         target={@myself}
         error={@error}
-        id="salesforce-contact-select"
+        id={"#{@config.modal_id_prefix}-contact-select"}
       />
 
       <div :if={@error && @selected_contact} class="flex items-center gap-3">
         <button
           type="button"
-          phx-click="sf_retry_generate_suggestions"
+          phx-click="retry_generate_suggestions"
           phx-target={@myself}
           class="px-3 py-2 rounded-md bg-slate-100 text-slate-800 text-sm font-medium hover:bg-slate-200"
         >
@@ -52,11 +81,12 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
       </div>
 
       <%= if @selected_contact do %>
-        <.sf_suggestions_section
+        <.suggestions_section
           suggestions={@suggestions}
           loading={@loading}
           myself={@myself}
           patch={@patch}
+          config={@config}
         />
       <% end %>
     </div>
@@ -67,9 +97,9 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   attr :loading, :boolean, required: true
   attr :myself, :any, required: true
   attr :patch, :string, required: true
+  attr :config, :map, required: true
 
-  defp sf_suggestions_section(assigns) do
-    # Currently Object and integration are always 1 to match the UI requirements
+  defp suggestions_section(assigns) do
     selected_count = Enum.count(assigns.suggestions, & &1.apply)
     object_count = if(selected_count > 0, do: 1, else: 0)
     integration_count = if(selected_count > 0, do: 1, else: 0)
@@ -98,7 +128,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
             submessage="The AI didn't detect any new contact information in the transcript."
           />
         <% else %>
-          <form phx-submit="sf_apply_updates" phx-change="sf_toggle_suggestion" phx-target={@myself}>
+          <form phx-submit="apply_updates" phx-change="toggle_suggestion" phx-target={@myself}>
             <div class="space-y-4 max-h-[60vh] overflow-y-auto">
               <.suggestion_card
                 :for={suggestion <- @suggestions}
@@ -109,9 +139,9 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
 
             <.modal_footer
               cancel_patch={@patch}
-              submit_text="Update Salesforce"
-              submit_class="bg-salesforce-brand hover:bg-salesforce-hover"
-              icon_src={~p"/images/salesforce-white.webp"}
+              submit_text={"Update #{@config.display_name}"}
+              submit_class={@config.button_class}
+              icon_src={@config.icon_path}
               icon_class="w-7 h-7"
               disabled={@selected_count == 0}
               loading={@loading}
@@ -147,8 +177,9 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
 
   @impl true
   def handle_event("update_mapping", %{"field" => _field}, socket) do
+    config = CrmConfig.get(socket.assigns.crm_type)
+
     if length(socket.assigns.suggestions) == 1 do
-      # Trigger CTA flow - apply updates for the single field
       selected_contact = socket.assigns.selected_contact
       credential = socket.assigns.credential
 
@@ -158,7 +189,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
         |> Enum.into(%{}, fn s -> {s.field, s.new_value} end)
 
       if map_size(updates) > 0 do
-        send(self(), {:apply_salesforce_updates, updates, selected_contact, credential})
+        send(self(), {config.apply_message, updates, selected_contact, credential})
         {:noreply, assign(socket, loading: true)}
       else
         {:noreply, socket}
@@ -170,11 +201,12 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
 
   @impl true
   def handle_event("contact_search", %{"value" => query}, socket) do
+    config = CrmConfig.get(socket.assigns.crm_type)
     query = String.trim(query)
 
     if String.length(query) >= 2 do
       socket = assign(socket, searching: true, error: nil, query: query, dropdown_open: true)
-      send(self(), {:salesforce_search, query, socket.assigns.credential})
+      send(self(), {config.search_message, query, socket.assigns.credential})
       {:noreply, socket}
     else
       {:noreply, assign(socket, query: query, contacts: [], dropdown_open: query != "")}
@@ -193,6 +225,8 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
 
   @impl true
   def handle_event("toggle_contact_dropdown", _params, socket) do
+    config = CrmConfig.get(socket.assigns.crm_type)
+
     if socket.assigns.dropdown_open do
       {:noreply, assign(socket, dropdown_open: false)}
     else
@@ -201,13 +235,14 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
       query =
         "#{socket.assigns.selected_contact.firstname} #{socket.assigns.selected_contact.lastname}"
 
-      send(self(), {:salesforce_search, query, socket.assigns.credential})
+      send(self(), {config.search_message, query, socket.assigns.credential})
       {:noreply, socket}
     end
   end
 
   @impl true
   def handle_event("select_contact", %{"id" => contact_id}, socket) do
+    config = CrmConfig.get(socket.assigns.crm_type)
     contact = Enum.find(socket.assigns.contacts, &(&1.id == contact_id))
 
     if contact do
@@ -224,8 +259,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
 
       send(
         self(),
-        {:generate_salesforce_suggestions, contact, socket.assigns.meeting,
-         socket.assigns.credential}
+        {config.generate_message, contact, socket.assigns.meeting, socket.assigns.credential}
       )
 
       {:noreply, socket}
@@ -235,7 +269,9 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   end
 
   @impl true
-  def handle_event("sf_retry_generate_suggestions", _params, socket) do
+  def handle_event("retry_generate_suggestions", _params, socket) do
+    config = CrmConfig.get(socket.assigns.crm_type)
+
     if socket.assigns.selected_contact do
       socket =
         assign(socket,
@@ -247,8 +283,8 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
 
       send(
         self(),
-        {:generate_salesforce_suggestions, socket.assigns.selected_contact,
-         socket.assigns.meeting, socket.assigns.credential}
+        {config.generate_message, socket.assigns.selected_contact, socket.assigns.meeting,
+         socket.assigns.credential}
       )
 
       {:noreply, socket}
@@ -275,7 +311,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   end
 
   @impl true
-  def handle_event("sf_toggle_suggestion", params, socket) do
+  def handle_event("toggle_suggestion", params, socket) do
     applied_fields = Map.get(params, "apply", %{})
     values = Map.get(params, "values", %{})
     checked_fields = Map.keys(applied_fields)
@@ -297,7 +333,8 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   end
 
   @impl true
-  def handle_event("sf_apply_updates", %{"apply" => selected, "values" => values}, socket) do
+  def handle_event("apply_updates", %{"apply" => selected, "values" => values}, socket) do
+    config = CrmConfig.get(socket.assigns.crm_type)
     socket = assign(socket, loading: true, error: nil)
 
     updates =
@@ -309,7 +346,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
 
     send(
       self(),
-      {:apply_salesforce_updates, updates, socket.assigns.selected_contact,
+      {config.apply_message, updates, socket.assigns.selected_contact,
        socket.assigns.credential}
     )
 
@@ -317,7 +354,7 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
   end
 
   @impl true
-  def handle_event("sf_apply_updates", _params, socket) do
+  def handle_event("apply_updates", _params, socket) do
     {:noreply, assign(socket, error: "Please select at least one field to update")}
   end
 

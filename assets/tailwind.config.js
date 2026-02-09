@@ -15,7 +15,11 @@ module.exports = {
     extend: {
       colors: {
         brand: "#FD4F00",
+        chat: {
+          bubble: "#f0f2f5",
+        },
         hubspot: {
+          brand: "#ff7a59",
           overlay: "#B1B1B1",
           card: "#f5f8f7",
           input: "#CACDCC",

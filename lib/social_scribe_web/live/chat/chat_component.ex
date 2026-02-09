@@ -135,7 +135,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
           <div :for={message <- @messages} class="space-y-4">
             <!-- User Message -->
             <div :if={message.role == :user} class="flex justify-end">
-              <div class="bg-[#f0f2f5] text-gray-900 px-4 py-2.5 rounded-2xl rounded-tr-sm text-[15px] leading-relaxed max-w-[90%] font-sans flex items-center flex-wrap gap-x-1 whitespace-pre-wrap">
+              <div class="bg-chat-bubble text-gray-900 px-4 py-2.5 rounded-2xl rounded-tr-sm text-[15px] leading-relaxed max-w-[90%] font-sans flex items-center flex-wrap gap-x-1 whitespace-pre-wrap">
                 <.message_content
                   content={message.content}
                   contacts={Map.get(message, :tagged_contacts, [])}
@@ -301,7 +301,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
             <div :if={Enum.any?(@tagged_contacts)} class="flex flex-wrap gap-1.5 mb-2">
               <span
                 :for={tc <- @tagged_contacts}
-                class="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 bg-[#f0f2f5] rounded-full text-sm"
+                class="inline-flex items-center gap-1.5 pl-0.5 pr-1.5 py-0.5 bg-chat-bubble rounded-full text-sm"
               >
                 <div class="relative flex-shrink-0">
                   <span class={[
@@ -425,7 +425,7 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
           class={[
             "inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full whitespace-nowrap mx-0.5 transition-all text-gray-900 shrink-0",
             @mode == :user && "bg-white border border-gray-100 shadow-sm",
-            @mode == :assistant && "bg-[#f0f2f5]"
+            @mode == :assistant && "bg-chat-bubble"
           ]}
           style="display: inline-flex !important; vertical-align: middle; line-height: 1; height: 28px; width: fit-content; position: relative; top: -1px;"
         >
