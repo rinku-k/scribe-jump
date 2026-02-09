@@ -32,7 +32,8 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         |> put_flash(:error, "You do not have permission to view this meeting.")
         |> redirect(to: ~p"/dashboard/meetings")
 
-      {:error, socket}
+      # Note: mount/3 must return {:ok, socket} even when redirecting
+      {:ok, socket}
     else
       hubspot_credential = Accounts.get_user_hubspot_credential(socket.assigns.current_user.id)
       salesforce_credential = Accounts.get_user_salesforce_credential(socket.assigns.current_user.id)
