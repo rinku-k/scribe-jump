@@ -115,7 +115,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   def handle_info({:generate_suggestions, contact, meeting, _credential}, socket) do
     case HubspotSuggestions.generate_suggestions_from_meeting(meeting) do
       {:ok, suggestions} ->
-        merged = HubspotSuggestions.merge_with_contact(suggestions, normalize_contact(contact))
+        merged = HubspotSuggestions.merge_with_contact(suggestions, contact)
 
         send_update(SocialScribeWeb.MeetingLive.HubspotModalComponent,
           id: "hubspot-modal",
@@ -187,7 +187,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   def handle_info({:generate_salesforce_suggestions, contact, meeting, _credential}, socket) do
     case SalesforceSuggestions.generate_suggestions_from_meeting(meeting) do
       {:ok, suggestions} ->
-        merged = SalesforceSuggestions.merge_with_contact(suggestions, normalize_contact(contact))
+        merged = SalesforceSuggestions.merge_with_contact(suggestions, contact)
 
         send_update(SocialScribeWeb.MeetingLive.SalesforceModalComponent,
           id: "salesforce-modal",
@@ -334,12 +334,6 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   end
 
 
-
-  defp normalize_contact(contact) do
-    # Contact is already formatted with atom keys from HubspotApi.format_contact
-    contact
-  end
-
   defp hubspot_suggestions_error_message({:api_error, 429, error_body}) when is_map(error_body) do
     retry_after_seconds = parse_gemini_retry_delay_seconds(error_body)
 
@@ -393,6 +387,7 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   end
 
   attr :meeting_transcript, :map, required: true
+  attr :meeting_participants, :list, default: []
 
   defp transcript_content(assigns) do
     has_transcript =
@@ -401,9 +396,17 @@ defmodule SocialScribeWeb.MeetingLive.Show do
         Map.get(assigns.meeting_transcript.content, "data") &&
         Enum.any?(Map.get(assigns.meeting_transcript.content, "data"))
 
+    # Map recall_participant_id -> name so we can resolve speaker_id in transcript segments
+    participants = assigns.meeting_participants || []
+    participant_id_to_name =
+      participants
+      |> Enum.map(fn p -> {to_string(p.recall_participant_id), p.name || "Unknown Participant"} end)
+      |> Map.new()
+
     assigns =
       assigns
       |> assign(:has_transcript, has_transcript)
+      |> assign(:participant_id_to_name, participant_id_to_name)
 
     ~H"""
     <div class="bg-white shadow-xl rounded-lg p-6 md:p-8">
@@ -415,9 +418,9 @@ defmodule SocialScribeWeb.MeetingLive.Show do
           <div :for={segment <- @meeting_transcript.content["data"]} class="mb-3">
             <p>
               <span class="font-semibold text-indigo-600">
-                {segment["speaker"] || "Unknown Speaker"}:
+                {speaker_display_name(segment, @participant_id_to_name)}:
               </span>
-              {Enum.map_join(segment["words"] || [], " ", & &1["text"])}
+              {segment_words_text(segment)}
             </p>
           </div>
         <% else %>
@@ -429,6 +432,46 @@ defmodule SocialScribeWeb.MeetingLive.Show do
     </div>
     """
   end
+
+  defp speaker_display_name(segment, participant_id_to_name) do
+    # Segment may have string or atom keys (stored JSON).
+    # Recall API can use "speaker"/"speaker_id" or "participant" (id or %{id, name}) per segment.
+    speaker = segment["speaker"] || segment[:speaker]
+    speaker_id = segment["speaker_id"] || segment[:speaker_id]
+    participant = segment["participant"] || segment[:participant]
+
+    participant_id = participant_id_from_segment(participant)
+    participant_name = participant_name_from_segment(participant)
+
+    cond do
+      is_binary(speaker) and speaker != "" -> speaker
+      is_binary(participant_name) and participant_name != "" -> participant_name
+      speaker_id != nil -> Map.get(participant_id_to_name, to_string(speaker_id), "Unknown Speaker")
+      participant_id != nil -> Map.get(participant_id_to_name, to_string(participant_id), "Unknown Speaker")
+      true -> "Unknown Speaker"
+    end
+  end
+
+  defp participant_id_from_segment(nil), do: nil
+  defp participant_id_from_segment(id) when is_integer(id) or is_binary(id), do: id
+  defp participant_id_from_segment(participant) when is_map(participant) do
+    participant["id"] || participant[:id]
+  end
+  defp participant_id_from_segment(_), do: nil
+
+  defp participant_name_from_segment(nil), do: nil
+  defp participant_name_from_segment(participant) when is_map(participant) do
+    name = participant["name"] || participant[:name]
+    if is_binary(name) and name != "", do: name, else: nil
+  end
+  defp participant_name_from_segment(_), do: nil
+
+  defp segment_words_text(segment) do
+    words = segment["words"] || segment[:words] || []
+    Enum.map_join(words, " ", fn w -> w["text"] || w[:text] || "" end)
+  end
+
+
 
   defp salesforce_suggestions_error_message({:api_error, 429, error_body})
        when is_map(error_body) do
