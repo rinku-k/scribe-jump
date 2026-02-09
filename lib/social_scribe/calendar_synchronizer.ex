@@ -91,10 +91,19 @@ defmodule SocialScribe.CalendarSynchronizer do
   end
 
   defp ensure_valid_token(%UserCredential{} = credential) do
-    if DateTime.compare(credential.expires_at || DateTime.utc_now(), DateTime.utc_now()) == :lt do
-      # Check if we have a refresh token before attempting to refresh
+    if token_expired?(credential) do
       if is_nil(credential.refresh_token) do
-        {:error, :no_refresh_token}
+        # No refresh token available - use the existing access token optimistically.
+        # Google may still accept it briefly past expiry. If not, the API call will
+        # return a clear 401 error. This typically means the user needs to
+        # re-authenticate with Google to obtain a new refresh token.
+        Logger.warning(
+          "Credential #{credential.id} has no refresh token. " <>
+            "Attempting to use existing access token. " <>
+            "User may need to reconnect their Google account to obtain a refresh token."
+        )
+
+        {:ok, credential.token}
       else
         case TokenRefresherApi.refresh_token(credential.refresh_token) do
           {:ok, new_token_data} ->
@@ -110,6 +119,12 @@ defmodule SocialScribe.CalendarSynchronizer do
     else
       {:ok, credential.token}
     end
+  end
+
+  defp token_expired?(%UserCredential{expires_at: nil}), do: true
+
+  defp token_expired?(%UserCredential{expires_at: expires_at}) do
+    DateTime.compare(expires_at, DateTime.utc_now()) == :lt
   end
 
   defp sync_items(items, user_id, credential_id) do

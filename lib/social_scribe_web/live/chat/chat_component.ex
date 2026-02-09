@@ -442,18 +442,6 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
 
   @impl true
   def update(assigns, socket) do
-    has_hubspot =
-      case assigns[:current_user] do
-        nil -> false
-        user -> Accounts.get_user_hubspot_credential(user.id) != nil
-      end
-
-    has_salesforce =
-      case assigns[:current_user] do
-        nil -> false
-        user -> Accounts.get_user_salesforce_credential(user.id) != nil
-      end
-
     socket =
       socket
       |> assign(assigns)
@@ -469,11 +457,26 @@ defmodule SocialScribeWeb.Chat.ChatComponent do
       |> assign_new(:contact_search_loading, fn -> false end)
       |> assign_new(:conversation_contacts, fn -> [] end)
       |> assign_new(:just_tagged, fn -> false end)
-      |> assign(:has_hubspot, has_hubspot)
-      |> assign(:has_salesforce, has_salesforce)
+      |> maybe_update_crm_sources(assigns)
       |> maybe_append_ai_response(assigns)
 
     {:ok, socket}
+  end
+
+  defp maybe_update_crm_sources(socket, assigns) do
+    case assigns[:current_user] do
+      nil ->
+        # No current_user in this update (e.g. send_update for search results / AI response),
+        # preserve existing values
+        socket
+        |> assign_new(:has_hubspot, fn -> false end)
+        |> assign_new(:has_salesforce, fn -> false end)
+
+      user ->
+        socket
+        |> assign(:has_hubspot, Accounts.get_user_hubspot_credential(user.id) != nil)
+        |> assign(:has_salesforce, Accounts.get_user_salesforce_credential(user.id) != nil)
+    end
   end
 
   @impl true
