@@ -82,6 +82,11 @@ defmodule SocialScribeWeb.MeetingLive.Show do
   end
 
   @impl true
+  def handle_event("transcript_time_clicked", _params, socket) do
+    {:noreply, put_flash(socket, :info, "Currently this feature is not implemented")}
+  end
+
+  @impl true
   def handle_event("validate-follow-up-email", params, socket) do
     socket =
       socket

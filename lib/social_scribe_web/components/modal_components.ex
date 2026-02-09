@@ -330,6 +330,7 @@ defmodule SocialScribeWeb.ModalComponents do
       <.suggestion_card suggestion={%{field: "email", label: "Email", ...}} />
   """
   attr :suggestion, :map, required: true
+  attr :target, :any, default: nil
   attr :class, :string, default: nil
 
   def suggestion_card(assigns) do
@@ -349,15 +350,6 @@ defmodule SocialScribeWeb.ModalComponents do
         </div>
 
         <div class="flex items-center gap-3 pt-0.5">
-          <span
-            class={[
-              "inline-flex items-center rounded-full bg-hubspot-pill px-2 py-1 text-xs font-medium text-hubspot-pill-text",
-              if(@suggestion.apply, do: "opacity-100", else: "opacity-0 pointer-events-none")
-            ]}
-            aria-hidden={to_string(!@suggestion.apply)}
-          >
-            1 update selected
-          </span>
           <button type="button" class="text-xs text-hubspot-hide hover:text-hubspot-hide-hover font-medium">
             Hide details
           </button>
@@ -403,11 +395,18 @@ defmodule SocialScribeWeb.ModalComponents do
         </div>
 
         <div class="mt-3 grid grid-cols-[1fr_32px_1fr] items-start gap-6">
-          <button type="button" class="text-xs text-hubspot-link hover:text-hubspot-link-hover font-medium justify-self-start">
+          <button
+            type="button"
+            phx-click="update_mapping"
+            phx-value-field={@suggestion.field}
+            phx-target={@target}
+            class="text-xs text-hubspot-link hover:text-hubspot-link-hover font-medium justify-self-start"
+          >
             Update mapping
           </button>
           <span></span>
           <span :if={@suggestion[:timestamp]} class="text-xs text-slate-500 justify-self-start">Found in transcript<span
+              phx-click="transcript_time_clicked"
               class="text-hubspot-link hover:underline cursor-help"
               title={@suggestion[:context]}
             >
