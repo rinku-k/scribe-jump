@@ -97,7 +97,8 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
             <.modal_footer
               cancel_patch={@patch}
               submit_text="Update Salesforce"
-              submit_class="bg-hubspot-button hover:bg-hubspot-button-hover"
+              submit_class="bg-blue-600 hover:bg-blue-700"
+              icon_src={~p"/images/salesforce.webp"}
               disabled={@selected_count == 0}
               loading={@loading}
               loading_text="Updating..."
