@@ -251,6 +251,13 @@ Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 * **Prompt Templating for Automations:** The current automation prompt templating is basic (string replacement). A more sophisticated templating engine (e.g., EEx or a dedicated library) would be a future improvement.
 * **Agenda Integration:** Currently we only sync when the calendar event has a `hangoutLink` or `location` field with a zoom or google meet link.
 * If meeting is synced in Social Scribe app, the later edits and deletion does not update the same in Social Scribe App
+
+---
+
+## 🔮 Future Implementation
+
+* **Chat History Persistence:** Store and retrieve past chat conversations, allowing users to revisit previous Q&A sessions with the AI agent across different meetings and contacts.
+
 ---
 
 ## 📚 Learn More (Phoenix Framework)
