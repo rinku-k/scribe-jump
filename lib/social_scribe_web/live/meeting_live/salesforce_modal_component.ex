@@ -87,7 +87,11 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
         <% else %>
           <form phx-submit="sf_apply_updates" phx-change="sf_toggle_suggestion" phx-target={@myself}>
             <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-              <.suggestion_card :for={suggestion <- @suggestions} suggestion={suggestion} />
+              <.suggestion_card
+                :for={suggestion <- @suggestions}
+                suggestion={suggestion}
+                target={@myself}
+              />
             </div>
 
             <.modal_footer
@@ -97,13 +101,36 @@ defmodule SocialScribeWeb.MeetingLive.SalesforceModalComponent do
               disabled={@selected_count == 0}
               loading={@loading}
               loading_text="Updating..."
-              info_text={"1 object, #{@selected_count} fields in 1 integration selected to update"}
+              info_text={"#{@selected_count} Field(s) selected"}
             />
           </form>
         <% end %>
       <% end %>
     </div>
     """
+  end
+
+  @impl true
+  def handle_event("update_mapping", %{"field" => _field}, socket) do
+    if length(socket.assigns.suggestions) == 1 do
+      # Trigger CTA flow - apply updates for the single field
+      selected_contact = socket.assigns.selected_contact
+      credential = socket.assigns.credential
+
+      updates =
+        socket.assigns.suggestions
+        |> Enum.filter(& &1.apply)
+        |> Enum.into(%{}, fn s -> {s.field, s.new_value} end)
+
+      if Map.size(updates) > 0 do
+        send(self(), {:apply_salesforce_updates, updates, selected_contact, credential})
+        {:noreply, assign(socket, loading: true)}
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
