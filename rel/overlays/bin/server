@@ -2,4 +2,7 @@
 set -eu
 
 cd -P -- "$(dirname -- "$0")"
+echo "Running migrations..."
+./social_scribe eval "SocialScribe.Release.migrate()"
+echo "Starting server..."
 PHX_SERVER=true exec ./social_scribe start
