@@ -70,9 +70,18 @@ defmodule SocialScribe.CalendarSyncronizer do
 
   defp sync_items(items, user_id, credential_id) do
     Enum.each(items, fn item ->
-      # We only sync meetings that have a zoom or google meet link for now
-      if String.contains?(Map.get(item, "location", ""), ".zoom.") || Map.get(item, "hangoutLink") do
-        Calendar.create_or_update_calendar_event(parse_google_event(item, user_id, credential_id))
+      try do
+        parsed_event = parse_google_event(item, user_id, credential_id)
+
+        # Only sync meetings that have a detected meeting platform
+        if parsed_event.meeting_platform do
+          Calendar.create_or_update_calendar_event(parsed_event)
+        end
+      rescue
+        e ->
+          Logger.error(
+            "Failed to sync calendar event #{inspect(item["id"])}: #{inspect(e)}"
+          )
       end
     end)
 
@@ -83,6 +92,9 @@ defmodule SocialScribe.CalendarSyncronizer do
     start_time_str = Map.get(item["start"], "dateTime", Map.get(item["start"], "date"))
     end_time_str = Map.get(item["end"], "dateTime", Map.get(item["end"], "date"))
 
+    # Detect meeting platform and extract meeting URL
+    {meeting_platform, meeting_url} = detect_meeting_platform_and_url(item)
+
     %{
       google_event_id: item["id"],
       summary: Map.get(item, "summary", "No Title"),
@@ -90,6 +102,8 @@ defmodule SocialScribe.CalendarSyncronizer do
       location: Map.get(item, "location"),
       html_link: Map.get(item, "htmlLink"),
       hangout_link: Map.get(item, "hangoutLink", Map.get(item, "location")),
+      meeting_platform: meeting_platform,
+      meeting_url: meeting_url,
       status: Map.get(item, "status"),
       start_time: to_utc_datetime(start_time_str),
       end_time: to_utc_datetime(end_time_str),
@@ -97,6 +111,82 @@ defmodule SocialScribe.CalendarSyncronizer do
       user_credential_id: credential_id
     }
   end
+
+  # Detects the meeting platform and extracts the meeting URL from a Google Calendar event.
+  # 
+  # Returns a tuple {platform, url} where:
+  # - platform is one of: "google_meet", "zoom", "microsoft_teams", or nil
+  # - url is the meeting URL string or nil
+  # 
+  # Checks multiple fields in this order:
+  # 1. hangoutLink (Google Meet)
+  # 2. location field (for Zoom, Teams, or other meeting links)
+  # 3. description field (for embedded meeting links)
+  defp detect_meeting_platform_and_url(item) do
+    # Check hangoutLink first (Google Meet)
+    if hangout_link = Map.get(item, "hangoutLink") do
+      {"google_meet", hangout_link}
+    else
+      # Check location and description for other platforms
+      location = Map.get(item, "location", "")
+      description = Map.get(item, "description", "")
+      
+      cond do
+        # Zoom detection - various patterns
+        zoom_url = extract_zoom_url(location) || extract_zoom_url(description) ->
+          {"zoom", zoom_url}
+        
+        # Microsoft Teams detection
+        teams_url = extract_teams_url(location) || extract_teams_url(description) ->
+          {"microsoft_teams", teams_url}
+        
+        # Google Meet in location/description (fallback)
+        meet_url = extract_google_meet_url(location) || extract_google_meet_url(description) ->
+          {"google_meet", meet_url}
+        
+        true ->
+          {nil, nil}
+      end
+    end
+  end
+
+  # Extract Zoom URL from text
+  # Matches patterns like:
+  # - https://zoom.us/j/123456789
+  # - https://company.zoom.us/j/123456789?pwd=abc123
+  # Uses [^\s<>"'] to avoid capturing HTML tags and attributes
+  defp extract_zoom_url(text) when is_binary(text) do
+    case Regex.run(~r/https?:\/\/[^\s<>"']*\.?zoom\.us\/[^\s<>"']+/i, text) do
+      [url | _] -> url
+      _ -> nil
+    end
+  end
+  defp extract_zoom_url(_), do: nil
+
+  # Extract Microsoft Teams URL from text
+  # Matches patterns like:
+  # - https://teams.microsoft.com/l/meetup-join/...
+  # - https://teams.live.com/meet/...
+  # Uses [^\s<>"'] to avoid capturing HTML tags and attributes
+  defp extract_teams_url(text) when is_binary(text) do
+    case Regex.run(~r/https?:\/\/teams\.(microsoft\.com|live\.com)\/[^\s<>"']+/i, text) do
+      [url | _] -> url
+      _ -> nil
+    end
+  end
+  defp extract_teams_url(_), do: nil
+
+  # Extract Google Meet URL from text (when not in hangoutLink)
+  # Matches patterns like:
+  # - https://meet.google.com/abc-defg-hij
+  # Uses [^\s<>"'] to avoid capturing HTML tags and attributes
+  defp extract_google_meet_url(text) when is_binary(text) do
+    case Regex.run(~r/https?:\/\/meet\.google\.com\/[^\s<>"']+/i, text) do
+      [url | _] -> url
+      _ -> nil
+    end
+  end
+  defp extract_google_meet_url(_), do: nil
 
   defp to_utc_datetime(iso_string) when is_binary(iso_string) do
     case DateTime.from_iso8601(iso_string) do

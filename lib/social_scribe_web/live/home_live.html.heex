@@ -29,10 +29,30 @@
       <div :for={event <- @events} class="bg-white  shadow-xl rounded-lg overflow-hidden">
         <div class="p-5 md:p-6">
           <div class="flex flex-col sm:flex-row justify-between sm:items-start">
-            <div>
-              <h3 class="text-xl font-semibold text-indigo-600  mb-1">
-                {event.summary}
-              </h3>
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <h3 class="text-xl font-semibold text-indigo-600  mb-1">
+                  {event.summary}
+                </h3>
+                <%= if event.meeting_platform do %>
+                  <span class={[
+                    "inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full",
+                    case event.meeting_platform do
+                      "google_meet" -> "bg-green-50 text-green-700"
+                      "zoom" -> "bg-blue-50 text-blue-700"
+                      "microsoft_teams" -> "bg-purple-50 text-purple-700"
+                      _ -> "bg-gray-50 text-gray-700"
+                    end
+                  ]}>
+                    <%= case event.meeting_platform do %>
+                      <% "google_meet" -> %> Google Meet
+                      <% "zoom" -> %> Zoom
+                      <% "microsoft_teams" -> %> Microsoft Teams
+                      <% _ -> %> {event.meeting_platform}
+                    <% end %>
+                  </span>
+                <% end %>
+              </div>
               <p class="text-sm text-slate-500  mb-2">
                 {event.start_time |> Timex.Timezone.convert(@timezone) |> Timex.format!("%m/%d/%Y, %H:%M:%S", :strftime)}
               </p>

@@ -10,6 +10,8 @@ defmodule SocialScribe.Calendar.CalendarEvent do
     field :summary, :string
     field :html_link, :string
     field :hangout_link, :string
+    field :meeting_platform, :string  # google_meet, zoom, microsoft_teams
+    field :meeting_url, :string       # The actual meeting URL to join
     field :start_time, :utc_datetime
     field :end_time, :utc_datetime
     field :record_meeting, :boolean, default: false
@@ -29,6 +31,8 @@ defmodule SocialScribe.Calendar.CalendarEvent do
       :location,
       :html_link,
       :hangout_link,
+      :meeting_platform,
+      :meeting_url,
       :status,
       :start_time,
       :end_time,
