@@ -11,7 +11,9 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
     ~H"""
     <div class="space-y-6">
       <div>
-        <h2 id={"#{@modal_id}-title"} class="text-xl font-medium tracking-tight text-slate-900">Update in HubSpot</h2>
+        <h2 id={"#{@modal_id}-title"} class="text-xl font-medium tracking-tight text-slate-900">
+          Update in HubSpot
+        </h2>
         <p id={"#{@modal_id}-description"} class="mt-2 text-base font-light leading-7 text-slate-500">
           Here are suggested updates to sync with your integrations based on this
           <span class="block">meeting</span>
@@ -19,14 +21,14 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
       </div>
 
       <.contact_select
-          selected_contact={@selected_contact}
-          contacts={@contacts}
-          loading={@searching}
-          open={@dropdown_open}
-          query={@query}
-          target={@myself}
-          error={@error}
-        />
+        selected_contact={@selected_contact}
+        contacts={@contacts}
+        loading={@searching}
+        open={@dropdown_open}
+        query={@query}
+        target={@myself}
+        error={@error}
+      />
 
       <div :if={@error && @selected_contact} class="flex items-center gap-3">
         <button
@@ -60,7 +62,20 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
   attr :patch, :string, required: true
 
   defp suggestions_section(assigns) do
-    assigns = assign(assigns, :selected_count, Enum.count(assigns.suggestions, & &1.apply))
+    # Currently Object and integration are always 1 to match the UI requirements
+    selected_count = Enum.count(assigns.suggestions, & &1.apply)
+    object_count = if(selected_count > 0, do: 1, else: 0)
+    integration_count = if(selected_count > 0, do: 1, else: 0)
+
+    info_text =
+      "#{object_count} #{pluralize("object", object_count)}, " <>
+        "#{selected_count} #{pluralize("field", selected_count)} in " <>
+        "#{integration_count} #{pluralize("integration", integration_count)} selected to update"
+
+    assigns =
+      assigns
+      |> assign(:selected_count, selected_count)
+      |> assign(:info_text, info_text)
 
     ~H"""
     <div class="space-y-4">
@@ -94,7 +109,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
               disabled={@selected_count == 0}
               loading={@loading}
               loading_text="Updating..."
-              info_text={"#{@selected_count} Field(s) selected"}
+              info_text={@info_text}
             />
           </form>
         <% end %>
@@ -149,7 +164,8 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
     {:ok, socket}
   end
 
-  defp maybe_select_all_suggestions(socket, %{suggestions: suggestions}) when is_list(suggestions) do
+  defp maybe_select_all_suggestions(socket, %{suggestions: suggestions})
+       when is_list(suggestions) do
     assign(socket, suggestions: Enum.map(suggestions, &Map.put(&1, :apply, true)))
   end
 
@@ -185,7 +201,10 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
     else
       # When opening dropdown with selected contact, search for similar contacts
       socket = assign(socket, dropdown_open: true, searching: true)
-      query = "#{socket.assigns.selected_contact.firstname} #{socket.assigns.selected_contact.lastname}"
+
+      query =
+        "#{socket.assigns.selected_contact.firstname} #{socket.assigns.selected_contact.lastname}"
+
       send(self(), {:hubspot_search, query, socket.assigns.credential})
       {:noreply, socket}
     end
@@ -196,16 +215,22 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
     contact = Enum.find(socket.assigns.contacts, &(&1.id == contact_id))
 
     if contact do
-      socket = assign(socket,
-        loading: true,
-        selected_contact: contact,
-        error: nil,
-        retry_after_seconds: nil,
-        dropdown_open: false,
-        query: "",
-        suggestions: []
+      socket =
+        assign(socket,
+          loading: true,
+          selected_contact: contact,
+          error: nil,
+          retry_after_seconds: nil,
+          dropdown_open: false,
+          query: "",
+          suggestions: []
+        )
+
+      send(
+        self(),
+        {:generate_suggestions, contact, socket.assigns.meeting, socket.assigns.credential}
       )
-      send(self(), {:generate_suggestions, contact, socket.assigns.meeting, socket.assigns.credential})
+
       {:noreply, socket}
     else
       {:noreply, assign(socket, error: "Contact not found")}
@@ -285,7 +310,12 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
         Map.put(acc, field, Map.get(values, field, ""))
       end)
 
-    send(self(), {:apply_hubspot_updates, updates, socket.assigns.selected_contact, socket.assigns.credential})
+    send(
+      self(),
+      {:apply_hubspot_updates, updates, socket.assigns.selected_contact,
+       socket.assigns.credential}
+    )
+
     {:noreply, socket}
   end
 
@@ -293,4 +323,7 @@ defmodule SocialScribeWeb.MeetingLive.HubspotModalComponent do
   def handle_event("apply_updates", _params, socket) do
     {:noreply, assign(socket, error: "Please select at least one field to update")}
   end
+
+  defp pluralize(word, 1), do: word
+  defp pluralize(word, _count), do: word <> "s"
 end
